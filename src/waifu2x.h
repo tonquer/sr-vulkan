@@ -10,7 +10,22 @@
 #include "gpu.h"
 #include "layer.h"
 
-class Waifu2x
+class SuperResolution
+{
+public:
+    virtual int process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize = 0) const { return -1; };
+
+public:
+    // waifu2x parameters
+    int noise;
+    int scale;
+    int tilesize;
+    int prepadding;
+    bool tta_mode;
+    std::string mode_name;
+};
+
+class Waifu2x: public SuperResolution
 {
 public:
     Waifu2x(int gpuid, bool tta_mode = false, int num_threads = 1, const char* name=NULL);
@@ -25,15 +40,6 @@ public:
     int process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize=0) const;
 
     int process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize=0) const;
-
-public:
-    // waifu2x parameters
-    int noise;
-    int scale;
-    int tilesize;
-    int prepadding;
-    bool tta_mode;
-    std::string mode_name;
 
 private:
     ncnn::VulkanDevice* vkdev;

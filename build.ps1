@@ -1,7 +1,6 @@
-$LIB_NAME='waifu2x-vulkan'
-$TAG_NAME=(git describe --abbrev=0 --tags)
-$HEAD_SHA_SHORT=(git rev-parse --short HEAD)
-$PACKAGE_PREFIX=($LIB_NAME + '-' + $TAG_NAME + '_' + $HEAD_SHA_SHORT)
+$LIB_NAME='sr-ncnn-vulan'
+$TAG_NAME='v1.3.0'
+$PACKAGE_PREFIX=($LIB_NAME + '-' + $TAG_NAME)
 $PACKAGENAME=($PACKAGE_PREFIX + '-windows')
 
 $oldPath=$pwd
@@ -11,15 +10,15 @@ $oldPath=$pwd
 # if(! $TRUE_FALSE)
 # {
 #   Invoke-WebRequest -Uri `
-#     https://sdk.lunarg.com/sdk/download/1.2.162.0/windows/VulkanSDK-1.2.162.0-Installer.exe?Human=true `
-#     -OutFile VulkanSDK-1.2.162.0-Installer.exe
+#     https://sdk.lunarg.com/sdk/download/1.2.198.1/windows/VulkanSDK-1.2.198.1-Installer.exe?Human=true `
+#     -OutFile VulkanSDK-1.2.198.1-Installer.exe
 #   try
 #   {
-#     7z x -aoa .\VulkanSDK-1.2.162.0-Installer.exe -oVulkanSDK
+#     7z x -aoa .\VulkanSDK-1.2.198.1-Installer.exe -oVulkanSDK
 #   }
 #   Catch
 #   {
-#     &"C:\Program Files\7-Zip\7z.exe" x -aoa .\VulkanSDK-1.2.162.0-Installer.exe -oVulkanSDK
+#     &"C:\Program Files\7-Zip\7z.exe" x -aoa .\VulkanSDK-1.2.198.1-Installer.exe -oVulkanSDK
 #   }
 #   Remove-Item .\VulkanSDK\Demos, `
 #               .\VulkanSDK\Samples, `
@@ -48,9 +47,10 @@ $PYTHON_INCLUDE_DIRS="$($PYTHON_DIR + '\include')"
 echo $PYTHON_DIR
 echo $Env:PYTHON_BIN
 echo $V
-echo $oldPath
+echo $PYTHON_INCLUDE_DIRS
+echo $PYTHON_LIBRARIES
 mkdir -Force build; Set-Location .\build\
-cmake -A x64 `
+cmake `
       -DVulkan_LIBRARY="..\VulkanSDK\windows\vulkan-1.lib" `
       -DVulkan_INCLUDE_DIR="..\VulkanSDK\Include" `
       -DDCMAKE_BUILD_TYPE="Release" `
@@ -63,13 +63,20 @@ cmake -A x64 `
       ..\src
 cmake --build . --config Release
 Set-Location .\Release\
-Copy-Item -Force waifu2x_vulkan.dll waifu2x_vulkan.pyd
 
-# Package
-Set-Location $oldPath
-mkdir -Force "$($PACKAGENAME)"
-Copy-Item -Force -Verbose -Path "README.md" -Destination "$($PACKAGENAME)"
-Copy-Item -Force -Verbose -Path "LICENSE" -Destination "$($PACKAGENAME)"
-Copy-Item -Force -Verbose -Path "build\Release\waifu2x_vulkan.pyd" -Destination "$($PACKAGENAME)"
-Copy-Item -Force -Verbose -Recurse -Path "waifu2x_vulkan\models" -Destination "$($PACKAGENAME)"
-Copy-Item -Force -Verbose -Recurse -Path "test" -Destination "$($PACKAGENAME)"
+$filePath = "sr-ncnn-vulkan.dll"
+if (Test-Path -Path $filePath) {
+    Copy-Item -Force sr-ncnn-vulkan.dll sr_ncnn_vulkan.pyd
+
+    # Package
+    Set-Location $oldPath
+    mkdir -Force "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Path "README.md" -Destination "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Path "LICENSE" -Destination "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Path "build\Release\sr_ncnn_vulkan.pyd" -Destination "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Recurse -Path "sr_ncnn_vulkan\models" -Destination "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Recurse -Path "test" -Destination "$($PACKAGENAME)"
+} else {
+    Write-Host "sr_ncnn_vulkan.dll not found"
+}
+

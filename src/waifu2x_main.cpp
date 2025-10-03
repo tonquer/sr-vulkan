@@ -16,10 +16,16 @@ static int TotalJobsProc = 0;
 static int NumThreads = 1;
 static int TaskId = 1;
 static int WebpQuality = 90;
+static int RealcuganSyncgap = 1;
 
 bool IsDebug = false;
 
 Waifu2xChar ModelPath[1024] = {0};
+
+int get_max_size()
+{
+    return Waifu2xList.size() + RealCuganList.size() + RealSrList.size() + RealEsrganList.size();
+}
 
 int waifu2x_getData(void*& out, unsigned long& outSize, double& tick, int& callBack, char * format, unsigned int timeout = 10)
 {
@@ -62,7 +68,7 @@ void* waifu2x_decode(void* args)
         Todecode.get(v);
         if (v.id == -233)
             break;
-        if (v.modelIndex >= (int)Waifu2xList.size())
+        if (v.modelIndex >= ((int)get_max_size()))
         {
             v.isSuc = false; Tosave.put(v); continue;
         }
@@ -102,7 +108,7 @@ void* waifu2x_encode(void* args)
         double encodeTick = (v.encodeTick.time + v.encodeTick.millitm / 1000.0) - (v.procTick.time + v.procTick.millitm / 1000.0);
         double allTick = (v.encodeTick.time + v.encodeTick.millitm / 1000.0) - (v.startTick.time + v.startTick.millitm / 10000.0);
         v.allTick = allTick;
-        waifu2x_printf(stdout, "[waifu2x] end encode imageId :%d, decode:%.2fs, proc:%.2fs, encode:%.2fs, \n",
+        waifu2x_printf(stdout, "[SR_NCNN] end encode imageId :%d, decode:%.2fs, proc:%.2fs, encode:%.2fs, \n",
             v.callBack, decodeTick, procTick, encodeTick);
 
         if (isSuc)
@@ -123,9 +129,85 @@ void* waifu2x_encode(void* args)
     }
     return NULL;
 }
+void* waifu2x_process_data(Task &v, const SuperResolution* waifu2x)
+{
+    const char* name;
+    if (GpuId >= 0)
+        name = ncnn::get_gpu_info(GpuId).device_name();
+    else
+        name = "cpu";
+
+    waifu2x_printf(stdout, "[SR_NCNN] start encode imageId :%d, gpu:%s, format:%s, model:%s, noise:%d, scale:%d, to_scale:%.2f, tta:%d, tileSize:%d, to_tile:%d\n",
+        v.callBack, name, v.save_format.c_str(), waifu2x->mode_name.c_str(), waifu2x->noise, waifu2x->scale, v.scale, waifu2x->tta_mode, waifu2x->tilesize, v.tileSize);
+
+    int scale_run_count = 1;
+    int frame = 0;
+    for (std::list<ncnn::Mat*>::iterator in = v.inImage.begin(); in != v.inImage.end(); in++)
+    {
+        frame++;
+        ncnn::Mat& inimage = **in;
+        if (in == v.inImage.begin())
+        {
+            if (v.toH <= 0 || v.toW <= 0)
+            {
+                v.toH = ceil(v.scale * inimage.h);
+                v.toW = ceil(v.scale * inimage.w);
+            }
+
+            //if (c == 4)
+            //{
+            //    v.file = "png";
+            //}
+            //waifu2x->process(v.inimage, v.outimage);
+            scale_run_count = 1;
+
+            if (waifu2x->scale <= 1)
+            {
+                scale_run_count = 1;
+            }
+            else if (v.toH > 0 && v.toW > 0 && inimage.h > 0 && inimage.w > 0)
+            {
+                scale_run_count = std::max(int(ceil(v.toW * 1.0 / inimage.w)), scale_run_count);
+                scale_run_count = std::max(int(ceil(v.toH * 1.0 / inimage.h)), scale_run_count);
+                scale_run_count = ceil(log(scale_run_count) / log(waifu2x->scale));
+                scale_run_count = std::max(scale_run_count, 1);
+            }
+        }
+        int toW = inimage.w * pow(waifu2x->scale, scale_run_count);
+        int toH = inimage.h * pow(waifu2x->scale, scale_run_count);
+        ncnn::Mat* outimage = new ncnn::Mat(toW, toH, (size_t)inimage.elemsize, (int)inimage.elemsize);
+
+        for (int i = 0; i < scale_run_count; i++)
+        {
+            if (i == scale_run_count - 1)
+            {
+                waifu2x_printf(stdout, "[SR_NCNN] start encode imageId :%d, count:%d, frame:%d, h:%d->%d, w:%d->%d \n",
+                    v.callBack, i + 1, frame, inimage.h, outimage->h, inimage.w, outimage->w);
+                waifu2x->process(inimage, *outimage, v.tileSize);
+                inimage.release();
+            }
+            else
+            {
+                ncnn::Mat tmpimage(inimage.w * waifu2x->scale, inimage.h * waifu2x->scale, (size_t)inimage.elemsize, (int)inimage.elemsize);
+                waifu2x_printf(stdout, "[SR_NCNN] start encode imageId :%d, count:%d, frame:%d, h:%d->%d, w:%d->%d \n",
+                    v.callBack, i + 1, frame, inimage.h, tmpimage.h, inimage.w, tmpimage.w);
+                waifu2x->process(inimage, tmpimage, v.tileSize);
+                inimage.release();
+                inimage = tmpimage;
+            }
+        }
+        v.outImage.push_back(outimage);
+
+    }
+    ftime(&v.procTick);
+    v.clear_in_image();
+    Toencode.put(v);
+    return NULL;
+}
+
 void* waifu2x_proc(void* args)
 {
-    const Waifu2x* waifu2x;
+    const SuperResolution* waifu2x;
     for (;;)
     {
         Task v;
@@ -133,82 +215,30 @@ void* waifu2x_proc(void* args)
         if (v.id == -233)
             break;
 
-        waifu2x = Waifu2xList[v.modelIndex];
-
-        const char* name;
-        if (GpuId >= 0)
-            name = ncnn::get_gpu_info(GpuId).device_name();
-        else
-            name = "cpu";
-
-        waifu2x_printf(stdout, "[waifu2x] start encode imageId :%d, gpu:%s, format:%s, model:%s, noise:%d, scale:%d, tta:%d, tileSize:%d\n",
-            v.callBack, name, v.save_format.c_str(), waifu2x->mode_name.c_str(), waifu2x->noise, waifu2x->scale, waifu2x->tta_mode, v.tileSize);
-        int scale_run_count = 1;
-        int frame = 0;
-        for (std::list<ncnn::Mat *>::iterator in = v.inImage.begin(); in != v.inImage.end(); in++)
+        if (v.modelIndex >= Waifu2xList.size() + RealCuganList.size() + RealSrList.size())
         {
-            frame++;
-            ncnn::Mat& inimage = **in;
-            if (in == v.inImage.begin())
-            {
-                if (v.toH <= 0 || v.toW <= 0)
-                {
-                    v.toH = ceil(v.scale * inimage.h);
-                    v.toW = ceil(v.scale * inimage.w);
-                }
-
-                //if (c == 4)
-                //{
-                //    v.file = "png";
-                //}
-                //waifu2x->process(v.inimage, v.outimage);
-                scale_run_count = 1;
-                if (v.toH > 0 && v.toW > 0 && inimage.h > 0 && inimage.w > 0)
-                {
-                    scale_run_count = std::max(int(ceil(v.toW * 1.0 / inimage.w)), scale_run_count);
-                    scale_run_count = std::max(int(ceil(v.toH * 1.0 / inimage.h)), scale_run_count);
-                    scale_run_count = ceil(log(scale_run_count) / log(2));
-                    scale_run_count = std::max(scale_run_count, 1);
-                }
-
-
-                if (waifu2x->scale <= 1)
-                {
-                    scale_run_count = 1;
-                }
-            }
-            int toW = inimage.w * pow(waifu2x->scale, scale_run_count);
-            int toH = inimage.h * pow(waifu2x->scale, scale_run_count);
-            ncnn::Mat* outimage = new ncnn::Mat(toW, toH, (size_t)inimage.elemsize, (int)inimage.elemsize);
-
-            for (int i = 0; i < scale_run_count; i++)
-            {
-                if (i == scale_run_count - 1)
-                {
-                    waifu2x_printf(stdout, "[waifu2x] start encode imageId :%d, count:%d, frame:%d, h:%d->%d, w:%d->%d \n",
-                        v.callBack, i + 1, frame, inimage.h, outimage->h, inimage.w, outimage->w);
-                    waifu2x->process(inimage, *outimage, v.tileSize);
-                    inimage.release();
-                }
-                else
-                {
-                    ncnn::Mat tmpimage(inimage.w * 2, inimage.h * 2, (size_t)inimage.elemsize, (int)inimage.elemsize);
-                    waifu2x_printf(stdout, "[waifu2x] start encode imageId :%d, count:%d, frame:%d, h:%d->%d, w:%d->%d \n",
-                        v.callBack, i + 1, frame, inimage.h, tmpimage.h, inimage.w, tmpimage.w);
-                    waifu2x->process(inimage, tmpimage, v.tileSize);
-                    inimage.release();
-                    inimage = tmpimage;
-                }
-            }
-            v.outImage.push_back(outimage);
-
+            waifu2x = RealEsrganList[v.modelIndex - Waifu2xList.size() - RealCuganList.size() - RealSrList.size()];
+            waifu2x_process_data(v, waifu2x);
         }
-        ftime(&v.procTick);
-        v.clear_in_image();
-        Toencode.put(v);
+        else if (v.modelIndex >= Waifu2xList.size() + RealCuganList.size())
+        {
+            waifu2x = RealSrList[v.modelIndex - Waifu2xList.size() - RealCuganList.size()];
+            waifu2x_process_data(v, waifu2x);
+        }
+        else if (v.modelIndex >= Waifu2xList.size())
+        {
+            waifu2x = RealCuganList[v.modelIndex - Waifu2xList.size()];
+            waifu2x_process_data(v, waifu2x);
+        }
+        else
+        {
+            waifu2x = Waifu2xList[v.modelIndex];
+            waifu2x_process_data(v, waifu2x);
+        }
     }
     return NULL;
 }
+
 void* waifu2x_to_stop(void* args)
 {
     for (int i = 0; i < (int)OtherThreads.size(); i++)
@@ -232,58 +262,12 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     Waifu2xChar modelpath[1024];
 #if _WIN32
     // Waifu2xList.push_back(NULL);
-    if (scale2 == 2) {
-
-        if (noise2 == -1)
-        {
-            swprintf(parampath, L"%s/models/%s/scale2.0x_model.param", ModelPath, name);
-            swprintf(modelpath, L"%s/models/%s/scale2.0x_model.bin", ModelPath, name);
-        }
-        else
-        {
-            swprintf(parampath, L"%s/models/%s/noise%d_scale2.0x_model.param", ModelPath, name, noise2);
-            swprintf(modelpath, L"%s/models/%s/noise%d_scale2.0x_model.bin", ModelPath, name, noise2);
-        }
-    }
-    else if (scale2 == 1) {
-        if (noise2 == -1)
-        {
-            swprintf(parampath, L"%s/models/%s/noise0_model.param", ModelPath, name);
-            swprintf(modelpath, L"%s/models/%s/noise0_model.bin", ModelPath, name);
-        }
-        else
-        {
-            swprintf(parampath, L"%s/models/%s/noise%d_model.param", ModelPath, name, noise2);
-            swprintf(modelpath, L"%s/models/%s/noise%d_model.bin", ModelPath, name, noise2);
-        }
-    }
+    swprintf(parampath, L"%s/models/waifu2x/%s.param", ModelPath, name);
+    swprintf(modelpath, L"%s/models/waifu2x/%s.bin", ModelPath, name);
 #else
     // Waifu2xList.push_back(NULL);
-    if (scale2 == 2) {
-
-        if (noise2 == -1)
-        {
-            sprintf(parampath, "%s/models/%s/scale2.0x_model.param", ModelPath, name);
-            sprintf(modelpath, "%s/models/%s/scale2.0x_model.bin", ModelPath, name);
-        }
-        else
-        {
-            sprintf(parampath, "%s/models/%s/noise%d_scale2.0x_model.param", ModelPath, name, noise2);
-            sprintf(modelpath, "%s/models/%s/noise%d_scale2.0x_model.bin", ModelPath, name, noise2);
-        }
-    }
-    else if (scale2 == 1) {
-        if (noise2 == -1)
-        {
-            sprintf(parampath, "%s/models/%s/noise0_model.param", ModelPath, name);
-            sprintf(modelpath, "%s/models/%s/noise0_model.bin", ModelPath, name);
-        }
-        else
-        {
-            sprintf(parampath, "%s/models/%s/noise%d_model.param", ModelPath, name, noise2);
-            sprintf(modelpath, "%s/models/%s/noise%d_model.bin", ModelPath, name, noise2);
-        }
-    }
+    sprintf(parampath, "%s/models/waifu2x/%s.param", ModelPath, name);
+    sprintf(modelpath, "%s/models/waifu2x/%s.bin", ModelPath, name);
 #endif
 
     int prepadding = 18;
@@ -292,9 +276,9 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     if (GpuId == -1) heap_budget = 4000;
     else heap_budget = ncnn::get_gpu_device(GpuId)->get_heap_budget();
 #if WIN32
-    if (!wcscmp(name, L"models-cunet"))
+    if (!wcsncmp(name, L"WAIFU2X_CUNET", 13))
 #else
-    if (!strcmp(name, "models-cunet"))
+    if (!strncmp(name, "WAIFU2X_CUNET", 13))
 #endif
     {
         if (noise2 == -1)
@@ -320,9 +304,9 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     }
 
 #if WIN32
-    else if (!wcscmp(name, L"models-upconv_7_anime_style_art_rgb"))
+    else if (!wcsncmp(name, L"WAIFU2X_ANIME", 13))
 #else
-    else if (!strcmp(name, "models-upconv_7_anime_style_art_rgb"))
+    else if (!strncmp(name, "WAIFU2X_ANIME", 13))
 #endif
     {
         prepadding = 7;
@@ -336,9 +320,9 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
             tilesize = 32;
     }
 #if WIN32
-    else if (!wcscmp(name, L"models-upconv_7_photo"))
+    else if (!wcsncmp(name, L"WAIFU2X_PHOTO", 13))
 #else
-    else if (!strcmp(name, "models-upconv_7_photo"))
+    else if (!strncmp(name, "WAIFU2X_PHOTO", 13))
 #endif
     {
         prepadding = 7;
@@ -358,12 +342,12 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     struct _stat buffer;
     if (_wstat((wchar_t *)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[waifu2x] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", parampath);
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t *)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[waifu2x] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", modelpath);
         return Waifu2xError::NotModel;
     }
 #else
@@ -371,12 +355,12 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     struct stat buffer;
     if (stat((char *)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[waifu2x] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", parampath);
         return Waifu2xError::NotModel;
     }
     if (stat((char *)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[waifu2x] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", modelpath);
         return Waifu2xError::NotModel;
     }
 #endif
@@ -410,6 +394,311 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     waifu->tilesize = tilesize;
     waifu->prepadding = prepadding;
     Waifu2xList[index] = waifu;
+    return 1;
+}
+
+int realcugan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode, int num_threads, int index)
+{
+    Waifu2xChar parampath[1024];
+    Waifu2xChar modelpath[1024];
+#if _WIN32
+    // Waifu2xList.push_back(NULL);
+    swprintf(parampath, L"%s/models/realcugan/%s.param", ModelPath, name);
+    swprintf(modelpath, L"%s/models/realcugan/%s.bin", ModelPath, name);
+#else
+    // Waifu2xList.push_back(NULL);
+    sprintf(parampath, "%s/models/realcugan/%s.param", ModelPath, name);
+    sprintf(modelpath, "%s/models/realcugan/%s.bin", ModelPath, name);
+#endif
+    int prepadding = 18;
+    int tilesize = 400;
+    uint32_t heap_budget;
+    if (GpuId == -1) heap_budget = 4000;
+    else heap_budget = ncnn::get_gpu_device(GpuId)->get_heap_budget();
+
+#if _WIN32
+
+    struct _stat buffer;
+    if (_wstat((wchar_t*)parampath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", parampath);
+        return Waifu2xError::NotModel;
+    }
+    if (_wstat((wchar_t*)modelpath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", modelpath);
+        return Waifu2xError::NotModel;
+    }
+#else
+
+    struct stat buffer;
+    if (stat((char*)parampath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", parampath);
+        return Waifu2xError::NotModel;
+    }
+    if (stat((char*)modelpath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", modelpath);
+        return Waifu2xError::NotModel;
+    }
+#endif
+
+#if _WIN32
+    //_bstr_t t1 = parampath;
+    //std::wstring paramfullpath((wchar_t*)t1);
+
+    //_bstr_t t2 = modelpath;
+    //std::wstring modelfullpath((wchar_t*)t2);
+    std::wstring paramfullpath(parampath);
+    std::wstring modelfullpath(modelpath);
+
+    _bstr_t b(name);
+    const char* name2 = b;
+#else
+    std::string paramfullpath(parampath);
+    std::string modelfullpath(modelpath);
+    const char* name2 = name;
+#endif
+    RealCUGAN* waifu = new RealCUGAN(GpuId, tta_mode, num_threads, name2);
+    waifu->scale = scale;
+    waifu->noise = noise;
+    waifu->load(paramfullpath, modelfullpath);
+    if (scale == 2)
+    {
+        prepadding = 18;
+        if (heap_budget > 1300)
+            tilesize = 400;
+        else if (heap_budget > 800)
+            tilesize = 300;
+        else if (heap_budget > 400)
+            tilesize = 200;
+        else if (heap_budget > 200)
+            tilesize = 100;
+        else
+            tilesize = 32;
+    }
+    if (scale == 3)
+    {
+        prepadding = 14;
+        if (heap_budget > 3300)
+            tilesize = 400;
+        else if (heap_budget > 1900)
+            tilesize = 300;
+        else if (heap_budget > 950)
+            tilesize = 200;
+        else if (heap_budget > 320)
+            tilesize = 100;
+        else
+            tilesize = 32;
+    }
+    if (scale == 4)
+    {
+        prepadding = 19;
+        if (heap_budget > 1690)
+            tilesize = 400;
+        else if (heap_budget > 980)
+            tilesize = 300;
+        else if (heap_budget > 530)
+            tilesize = 200;
+        else if (heap_budget > 240)
+            tilesize = 100;
+        else
+            tilesize = 32;
+    }
+    if (GpuId == -1) tilesize = 400;
+    //if (GpuId == -1)
+    //{
+        // cpu only
+        //tilesize = 4000;
+    //}
+
+    waifu->tilesize = tilesize;
+    waifu->prepadding = prepadding;
+    waifu->syncgap = RealcuganSyncgap;
+    RealCuganList[index] = waifu;
+    return 1;
+}
+
+int realsr_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode, int num_threads, int index)
+{
+
+    Waifu2xChar parampath[1024];
+    Waifu2xChar modelpath[1024];
+#if _WIN32
+    // Waifu2xList.push_back(NULL);
+    swprintf(parampath, L"%s/models/realsr/%s.param", ModelPath, name);
+    swprintf(modelpath, L"%s/models/realsr/%s.bin", ModelPath, name);
+#else
+    sprintf(parampath, "%s/models/realsr/%s.param", ModelPath, name);
+    sprintf(modelpath, "%s/models/realsr/%s.bin", ModelPath, name);
+#endif
+
+    int prepadding = 10;
+    int tilesize = 200;
+    uint32_t heap_budget;
+    if (GpuId == -1) heap_budget = 4000;
+    else heap_budget = ncnn::get_gpu_device(GpuId)->get_heap_budget();
+
+#if _WIN32
+
+    struct _stat buffer;
+    if (_wstat((wchar_t*)parampath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", parampath);
+        return Waifu2xError::NotModel;
+    }
+    if (_wstat((wchar_t*)modelpath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", modelpath);
+        return Waifu2xError::NotModel;
+    }
+#else
+
+    struct stat buffer;
+    if (stat((char*)parampath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", parampath);
+        return Waifu2xError::NotModel;
+    }
+    if (stat((char*)modelpath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", modelpath);
+        return Waifu2xError::NotModel;
+    }
+#endif
+
+#if _WIN32
+    //_bstr_t t1 = parampath;
+    //std::wstring paramfullpath((wchar_t*)t1);
+
+    //_bstr_t t2 = modelpath;
+    //std::wstring modelfullpath((wchar_t*)t2);
+    std::wstring paramfullpath(parampath);
+    std::wstring modelfullpath(modelpath);
+
+    _bstr_t b(name);
+    const char* name2 = b;
+#else
+    std::string paramfullpath(parampath);
+    std::string modelfullpath(modelpath);
+    const char* name2 = name;
+#endif
+    RealSR* waifu = new RealSR(GpuId, tta_mode, num_threads, name2);
+    waifu->load(paramfullpath, modelfullpath);
+    waifu->scale = scale;
+    waifu->noise = noise;
+    {
+        if (heap_budget > 1900)
+            tilesize = 200;
+        else if (heap_budget > 550)
+            tilesize = 100;
+        else if (heap_budget > 190)
+            tilesize = 64;
+        else
+            tilesize = 32;
+    }
+    if (GpuId == -1) tilesize = 200;
+    //if (GpuId == -1)
+    //{
+        // cpu only
+        //tilesize = 4000;
+    //}
+
+    waifu->tilesize = tilesize;
+    waifu->prepadding = prepadding;
+    RealSrList[index] = waifu;
+    return 1;
+}
+
+int realesrgan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode, int num_threads, int index)
+{
+
+    Waifu2xChar parampath[1024];
+    Waifu2xChar modelpath[1024];
+#if _WIN32
+    // Waifu2xList.push_back(NULL);
+    swprintf(parampath, L"%s/models/realesrgan/%s.param", ModelPath, name);
+    swprintf(modelpath, L"%s/models/realesrgan/%s.bin", ModelPath, name);
+#else
+    sprintf(parampath, "%s/models/realesrgan/%s.param", ModelPath, name);
+    sprintf(modelpath, "%s/models/realesrgan/%s.bin", ModelPath, name);
+#endif
+
+    int prepadding = 10;
+    int tilesize = 200;
+    uint32_t heap_budget;
+    if (GpuId == -1) heap_budget = 4000;
+    else heap_budget = ncnn::get_gpu_device(GpuId)->get_heap_budget();
+
+#if _WIN32
+
+    struct _stat buffer;
+    if (_wstat((wchar_t*)parampath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", parampath);
+        return Waifu2xError::NotModel;
+    }
+    if (_wstat((wchar_t*)modelpath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", modelpath);
+        return Waifu2xError::NotModel;
+    }
+#else
+
+    struct stat buffer;
+    if (stat((char*)parampath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", parampath);
+        return Waifu2xError::NotModel;
+    }
+    if (stat((char*)modelpath, &buffer) != 0)
+    {
+        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", modelpath);
+        return Waifu2xError::NotModel;
+    }
+#endif
+
+#if _WIN32
+    //_bstr_t t1 = parampath;
+    //std::wstring paramfullpath((wchar_t*)t1);
+
+    //_bstr_t t2 = modelpath;
+    //std::wstring modelfullpath((wchar_t*)t2);
+    std::wstring paramfullpath(parampath);
+    std::wstring modelfullpath(modelpath);
+
+    _bstr_t b(name);
+    const char* name2 = b;
+#else
+    std::string paramfullpath(parampath);
+    std::string modelfullpath(modelpath);
+    const char* name2 = name;
+#endif
+    RealESRGAN* waifu = new RealESRGAN(GpuId, tta_mode, num_threads, name2);
+    waifu->load(paramfullpath, modelfullpath);
+    waifu->scale = scale;
+    waifu->noise = noise;
+    {
+        if (heap_budget > 1900)
+            tilesize = 200;
+        else if (heap_budget > 550)
+            tilesize = 100;
+        else if (heap_budget > 190)
+            tilesize = 64;
+        else
+            tilesize = 32;
+    }
+    if (GpuId == -1) tilesize = 200;
+    //if (GpuId == -1)
+    //{
+        // cpu only
+        //tilesize = 4000;
+    //}
+
+    waifu->tilesize = tilesize;
+    waifu->prepadding = prepadding;
+    RealEsrganList[index] = waifu;
     return 1;
 }
 
@@ -482,24 +771,53 @@ int waifu2x_init_set(int gpuId2, int cpuNum)
         if (TotalJobsProc <= 0) { TotalJobsProc = std::min(2, gpu_queue_count); }
         NumThreads = 1;
     }
-    
-    std::string models[3] = { "models-cunet", "models-upconv_7_anime_style_art_rgb", "models-upconv_7_photo" };
-    for (int i = 0; i < 3; i++)
+    int len = sizeof(AllModel) / sizeof(AllModel[0]);
+    for (int j = 0; j < len; j++)
     {
-        std::string name = models[i];
-        for (int j = -1; j <= 3; j++)
-        {
+#if _WIN32
+        std::string oldName = AllModel[j];
+        wchar_t* oldName2 = _bstr_t(oldName.c_str());
+        std::wstring name = oldName2;
+
+        if (name.find(L"WAIFU2X") != std::string::npos) {
             Waifu2xList.push_back(NULL);
             Waifu2xList.push_back(NULL);
-            //if (waifu2x_addModel(name.c_str(), 2, j, true, NumThreads, setModel) < 0) { return -1; };
-            //if (waifu2x_addModel(name.c_str(), 2, j, false, NumThreads, setModel) < 0) { return -1; };
         }
+        else if (name.find(L"REALCUGAN") != std::string::npos) {
+            RealCuganList.push_back(NULL);
+            RealCuganList.push_back(NULL);
+        }
+        else if (name.find(L"REALSR") != std::string::npos) {
+            RealSrList.push_back(NULL);
+            RealSrList.push_back(NULL);
+        }
+        else if (name.find(L"REALESRGAN") != std::string::npos) {
+            RealEsrganList.push_back(NULL);
+            RealEsrganList.push_back(NULL);
+        }
+#else
+        std::string name = AllModel[j];
+        if (name.find("WAIFU2X") != std::string::npos) {
+            Waifu2xList.push_back(NULL);
+            Waifu2xList.push_back(NULL);
+        }
+        else if (name.find("REALCUGAN") != std::string::npos) {
+            RealCuganList.push_back(NULL);
+            RealCuganList.push_back(NULL);
+        }
+        else if (name.find("REALSR") != std::string::npos) {
+            RealSrList.push_back(NULL);
+            RealSrList.push_back(NULL);
+        }
+        else if (name.find("REALESRGAN") != std::string::npos) {
+            RealEsrganList.push_back(NULL);
+            RealEsrganList.push_back(NULL);
+        }
+#endif
     }
-    for (int i = -1; i <= 3; i++)
-    {
-        Waifu2xList.push_back(NULL);
-        Waifu2xList.push_back(NULL);
-    }
+    int modelLen = sizeof(AllModel) / sizeof(AllModel[0]);
+    waifu2x_printf(stdout, "[SR_NCNN] init model num:%d, waifu2x:%d, realcugan:%d, realsr:%d, realesrgan:%d\n", modelLen, Waifu2xList.size(), RealCuganList.size(), RealSrList.size(), RealEsrganList.size());
+
     // waifu2x proc
     ProcThreads.resize(TotalJobsProc);
     {
@@ -521,59 +839,147 @@ int waifu2x_init_set(int gpuId2, int cpuNum)
 }
 
 int waifu2x_check_init_model(int initModel)
-{
-    if (initModel < 0 || initModel >= (int)Waifu2xList.size())
+{   
+    if (initModel < 0 || initModel >= (int)get_max_size())
     {
         return Waifu2xError::NotModel;
     }
-    if (Waifu2xList[initModel])
+    int scale = 1;
+    int noise = 0;
+    bool tta = (initModel % 2 == 1);
+    int modelIndex = initModel / 2;
+#if _WIN32
+    std::string oldName = AllModel[modelIndex];
+
+    wchar_t * oldName2 = _bstr_t(oldName.c_str());
+    std::wstring name = oldName2;
+    if (name.find(L"UP2X") != std::string::npos)
     {
-        return 1;
+        scale = 2;
+    } else if(name.find(L"UP3X") != std::string::npos)
+    {
+        scale = 3;
+    } else if (name.find(L"UP4X") != std::string::npos)
+    {
+        scale = 4;
     }
-    int index = 0;
-#if _WIN32
-    std::wstring models[3] = { L"models-cunet", L"models-upconv_7_anime_style_art_rgb", L"models-upconv_7_photo" };
-#else
-    std::string models[3] = { "models-cunet", "models-upconv_7_anime_style_art_rgb", "models-upconv_7_photo" };
-#endif
-    for (int i = 0; i < 3; i++)
+
+    if (name.find(L"DENOISE0X") != std::string::npos)
     {
-#if _WIN32
-        std::wstring name = models[i];
+        noise = 0;
+    }
+    else if (name.find(L"DENOISE1X") != std::string::npos)
+    {
+        noise = 1;
+    }
+    else if (name.find(L"DENOISE2X") != std::string::npos)
+    {
+        noise = 2;
+    }
+    else if (name.find(L"DENOISE3X") != std::string::npos)
+    {
+        noise = 3;
+    }
 #else
-        std::string name = models[i];
+    std::string name = AllModel[modelIndex];
+
+
+    if (name.find("UP2X") != std::string::npos)
+    {
+        scale = 2;
+    }
+    else if (name.find("UP3X") != std::string::npos)
+    {
+        scale = 3;
+    }
+    else if (name.find("UP4X") != std::string::npos)
+    {
+        scale = 4;
+    }
+
+    if (name.find("DENOISE0X") != std::string::npos)
+    {
+        noise = 0;
+    }
+    else if (name.find("DENOISE1X") != std::string::npos)
+    {
+        noise = 1;
+    }
+    else if (name.find("DENOISE2X") != std::string::npos)
+    {
+        noise = 2;
+    }
+    else if (name.find("DENOISE3X") != std::string::npos)
+    {
+        noise = 3;
+    }
 #endif
-        for (int j = -1; j <= 3; j++)
+    if (initModel >= ((int)Waifu2xList.size() + (int)RealCuganList.size()) + (int)RealSrList.size())
+    {
+        initModel = initModel - (int)Waifu2xList.size() - (int)RealCuganList.size() - (int)RealSrList.size();
+        if (RealEsrganList[initModel])
         {
-            if (index == initModel) {
-                return waifu2x_addModel(name.c_str(), 2, j, false, NumThreads, index);
-            }
-            index += 1;
-            if (index == initModel){
-                return waifu2x_addModel(name.c_str(), 2, j, true, NumThreads, index);
-            }
-            index += 1;
+            return 1;
         }
+#if _WIN32
+        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
+#else
+        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", name.c_str(), modelIndex);
+#endif
+        if (GpuId == -1)
+        {
+#if _WIN32
+            waifu2x_printf(stderr, L"[SR_NCNN] RealESRGAN not support cpu model \n");
+#else
+            waifu2x_printf(stderr, "[SR_NCNN] RealESRGAN not support cpu model \n");
+#endif
+            waifu2x_set_error("RealESRGAN not support cpu model");
+            return Waifu2xError::NotSupport;
+        }
+        return realesrgan_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel);
     }
-    for (int j = -1; j <= 3; j++)
+    else if (initModel >= ((int)Waifu2xList.size() + (int)RealCuganList.size()))
     {
-        if (index == initModel) {
-#if _WIN32
-            return waifu2x_addModel(L"models-cunet", 1, j, false, NumThreads, index);
-#else
-            return waifu2x_addModel("models-cunet", 1, j, false, NumThreads, index);
-#endif
+        initModel = initModel - (int)Waifu2xList.size() - (int)RealCuganList.size();
+        if (RealSrList[initModel])
+        {
+            return 1;
         }
-        index ++ ;
-        if (index == initModel) {
 #if _WIN32
-            return waifu2x_addModel(L"models-cunet", 1, j, true, NumThreads, index);
+        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
 #else
-            return waifu2x_addModel("models-cunet", 1, j, true, NumThreads, index);
+        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", name.c_str(), modelIndex);
 #endif
-        }
-        index++;
+        return realsr_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel);
     }
+    else if (initModel >= ((int)Waifu2xList.size()))
+    {
+        initModel = initModel - (int)Waifu2xList.size();
+        if (RealCuganList[initModel])
+        {
+            return 1;
+        }
+#if _WIN32
+        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
+#else
+        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", name.c_str(), modelIndex);
+#endif
+        return realcugan_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel);
+    }
+    else {
+        if (Waifu2xList[initModel])
+        {
+            return 1;
+        }
+#if _WIN32
+        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
+#else
+        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", name.c_str(), modelIndex);
+#endif
+        return waifu2x_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel);
+    }
+
+
     return 1;
 }
 
@@ -600,7 +1006,10 @@ int waifu2x_addData(const unsigned char* data, unsigned int size, int callBack, 
     int sts = waifu2x_check_init_model(modelIndex);
     if (sts < 0)
     {
-        waifu2x_set_error("invalid model index");
+        if (sts == Waifu2xError::NotModel)
+        {
+            waifu2x_set_error("invalid model index");
+        }
         return sts;
     }
     if (format) v.save_format = format;
@@ -655,6 +1064,12 @@ int waifu2x_set_debug(bool isdebug)
 int waifu2x_set_webp_quality(int webp_quality)
 {
     WebpQuality = webp_quality;
+    return 0;
+}
+
+int waifu2x_set_realcugan_syncgap(int syncgap)
+{
+    RealcuganSyncgap = syncgap;
     return 0;
 }
 

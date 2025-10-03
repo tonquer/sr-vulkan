@@ -8,10 +8,10 @@ include LICENSE
 # Include the data files
 #recursive-include data *
 
-recursive-include waifu2x_vulkan *.pyd
-recursive-include waifu2x_vulkan *.pyi
-recursive-include waifu2x_vulkan *.so
-recursive-include waifu2x_vulkan *.bin
-recursive-include waifu2x_vulkan *.param
+recursive-include sr_ncnn_vulkan *.pyd
+recursive-include sr_ncnn_vulkan *.pyi
+recursive-include sr_ncnn_vulkan *.so
+recursive-include sr_ncnn_vulkan *.bin
+recursive-include sr_ncnn_vulkan *.param
 recursive-include src *
 recursive-include VulkanSDK *

@@ -9,7 +9,7 @@
 #include "webp/demux.h"
 #include "webp/mux.h"
 
-bool webp_load(Task &v)
+bool load_webp(Task &v)
 {
     unsigned char* pixeldata = 0;
 
@@ -54,7 +54,7 @@ bool webp_load(Task &v)
     return true;
 }
 
-bool webp_load_ani(Task& v)
+bool load_webp_ani(Task& v)
 {
     bool ok = false;
     uint32_t frame_index = 0;
@@ -144,6 +144,75 @@ End:
 //    enc = WebPAnimEncoderNew(width, height, &anim_config);
 //    ok = WebPAnimEncoderAdd(enc, &pic, timestamp_ms, &config);
 //}
+unsigned int webp_encode(ncnn::Mat& outimage, unsigned int toW, unsigned int toH, int webp_quality, uint8_t** out)
+{
+    unsigned int len = 0;
+    if (outimage.elemsize != 3 && outimage.elemsize != 4)
+    {
+        goto RETURN;
+    }
+    if (outimage.w != toW || outimage.h != toH)
+    {
+        WebPConfig config;
+        if (!WebPConfigPreset(&config, WEBP_PRESET_PHOTO, webp_quality)) {
+            return 0;   // version error
+        }
+        // ... additional tuning
+        config.lossless = !!0;
+
+        // Setup the input data
+        WebPPicture pic;
+        if (!WebPPictureInit(&pic)) {
+            return 0;  // version error
+        }
+        pic.use_argb = !!0;
+        pic.width = outimage.w;
+        pic.height = outimage.h;
+        // allocated picture of dimension width x height
+        if (!WebPPictureAlloc(&pic)) {
+            goto RETURN;
+        }
+
+        WebPMemoryWriter wrt;
+        WebPMemoryWriterInit(&wrt);     // initialize 'wrt'
+
+        pic.writer = WebPMemoryWrite;
+        pic.custom_ptr = &wrt;
+
+        // Compress!
+        if (outimage.elemsize == 3)
+        {
+            WebPPictureImportRGB(&pic, (unsigned char*)outimage.data, outimage.w * (int)outimage.elemsize);
+        }
+        else if (outimage.elemsize == 4) {
+            WebPPictureImportRGBA(&pic, (unsigned char*)outimage.data, outimage.w * (int)outimage.elemsize);
+        }
+        WebPPictureRescale(&pic, toW, toH);
+
+        int ok = WebPEncode(&config, &pic);   // ok = 0 => error occurred!
+        WebPPictureFree(&pic);  // must be called independently of the 'ok' result.
+
+        if (!ok) {
+            WebPMemoryWriterClear(&wrt);
+            goto RETURN;
+        }
+        *out = wrt.mem;
+        len = wrt.size;
+    }
+    else {
+        if (outimage.elemsize == 3)
+        {
+            len = WebPEncodeRGB((unsigned char*)outimage.data, outimage.w, outimage.h, outimage.w * (int)outimage.elemsize, webp_quality, out);
+        }
+        else if (outimage.elemsize == 4)
+        {
+            len = WebPEncodeRGBA((unsigned char*)outimage.data, outimage.w, outimage.h, outimage.w * (int)outimage.elemsize, webp_quality, out);
+        }
+    }
+RETURN:
+    return len;
+}
+
 bool webp_save_ani(Task &v)
 {
     bool ok = false;
@@ -170,8 +239,7 @@ bool webp_save_ani(Task &v)
     {
         ncnn::Mat & inimage = **i;
         int duration= *j;
-
-        size = WebPEncodeRGBA((unsigned char*)inimage.data, inimage.w, inimage.h, inimage.w * (int)inimage.elemsize, v.webp_quality, &outb);
+        size = webp_encode(inimage, v.toW, v.toH, v.webp_quality, &outb);
 
         const WebPData webp_data = { outb, size };
         frame.duration = duration;
@@ -208,20 +276,11 @@ bool webp_save(Task &v)
     size_t length = 0;
     unsigned char* output = 0;
     ncnn::Mat& outimage = **v.outImage.begin();
-    
-    if (outimage.elemsize == 3)
+    if (outimage.elemsize != 3 && outimage.elemsize != 4)
     {
-        length = WebPEncodeRGB((unsigned char*)outimage.data, outimage.w, outimage.h, outimage.w * (int)outimage.elemsize, v.webp_quality, &output);
+        goto RETURN;
     }
-    else if (outimage.elemsize == 4)
-    {
-        length = WebPEncodeRGBA((unsigned char*)outimage.data, outimage.w, outimage.h, outimage.w * (int)outimage.elemsize, v.webp_quality, &output);
-    }
-    else
-    {
-        // unsupported channel type
-    }
-
+    length = webp_encode(outimage, v.toW, v.toH, v.webp_quality, &output);
     if (length == 0)
         goto RETURN;
 

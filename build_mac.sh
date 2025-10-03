@@ -1,9 +1,9 @@
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-LIB_NAME=waifu2x-vulkan
-TAG_NAME=$(git describe --abbrev=0 --tags)
-HEAD_SHA_SHORT=$(git rev-parse --short HEAD)
-PACKAGE_PREFIX=${LIB_NAME}-${TAG_NAME}_${HEAD_SHA_SHORT}
+LIB_NAME=sr-ncnn-vulkan
+TAG_NAME=v1.3.0
+PACKAGE_PREFIX=${LIB_NAME}-${TAG_NAME}
 PACKAGENAME=${PACKAGE_PREFIX}-macos
+
 oldPath=`pwd`
 # OpemMP
 if [ ! -d "openmp-11.0.0.src" ];then
@@ -16,6 +16,7 @@ if [ ! -d "openmp-11.0.0.src" ];then
       # OpenMP
       mkdir -p build && cd build
       cmake -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
             -DCMAKE_INSTALL_PREFIX=install \
             -DLIBOMP_ENABLE_SHARED=OFF \
             -DLIBOMP_OMPT_SUPPORT=OFF \
@@ -25,28 +26,27 @@ if [ ! -d "openmp-11.0.0.src" ];then
       cmake --build . --target install
 
       # OpenMP Xcode macOS SDK
-      sudo cp install/include/* \
-            $DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include
-      sudo cp install/lib/libomp.a \
-            $DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib
+      # sudo cp install/include/* \
+      #       $DEVELOPER_DIR/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include
+      # sudo cp install/lib/libomp.a \
+      #       $DEVELOPER_DIR/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/
 
       cd ../..
 fi
 
-# Vulkan SDK
-if [ ! -d "vulkansdk-macos-1.2.162.0" ];then
-      wget 'https://sdk.lunarg.com/sdk/download/1.2.162.0/mac/vulkansdk-macos-1.2.162.0.dmg?Human=true' \
-      -O vulkansdk-macos-1.2.162.0.dmg
-      hdiutil attach vulkansdk-macos-1.2.162.0.dmg      
-      cp -r /Volumes/vulkansdk-macos-1.2.162.0 .
-      rm -rf vulkansdk-macos-1.2.162.0/Applications
-      find vulkansdk-macos-1.2.162.0 -type f | grep -v -E 'vulkan|glslang|MoltenVK' | xargs rm
-      hdiutil detach /Volumes/vulkansdk-macos-1.2.162.0
+if [ ! -d "MoltenVK" ];then
+      wget -q https://github.com/KhronosGroup/MoltenVK/releases/download/v1.2.8/MoltenVK-all.tar
+      tar -xf MoltenVK-all.tar
 fi
 
-export VULKAN_SDK=`pwd`/vulkansdk-macos-1.2.162.0/macOS
+export VULKAN_SDK=`pwd`/MoltenVK/MoltenVK
+
+OPENMP_INCLUDE=`pwd`/openmp-11.0.0.src/build/install/include
+OPENMP_LIB=`pwd`/openmp-11.0.0.src/build/install/lib/libomp.a
+cp $OPENMP_INCLUDE/* $VULKAN_SDK/../MoltenVK/include
 
 # Python x86_64
+# PYTHON_BIN=/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3
 if [ ! -n "$PYTHON_BIN" ]; then
       PYTHON_BIN=`which python3`
 fi
@@ -55,39 +55,66 @@ PYTHON_DIR=`dirname $PYTHON_BIN`/../
 VERSION=`${PYTHON_BIN} -V 2>&1 | cut -d " " -f 2`
 VERSION_INFO=${VERSION:0:3}
 
-PYTHON_LIBRARIES=`find $PYTHON_DIR -name "libpython${VERSION_INFO}*.dylib"|tail -1`
+#PYTHON_LIBRARIES=`find $PYTHON_DIR -name "libpython${VERSION_INFO}*.dylib"|tail -1`
 PYTHON_INCLUDE=`find $PYTHON_DIR -name "Python.h"|tail -1`
 PYTHON_INCLUDE_DIRS=`dirname $PYTHON_INCLUDE`
 
 echo $VERSION
 echo $PYTHON_BIN
-echo $PYTHON_LIBRARIES
+# echo $PYTHON_LIBRARIES
 echo $PYTHON_INCLUDE_DIRS
 
-# Python
+# build x86
 mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release \
       -DNCNN_VULKAN=ON \
       -DNCNN_BUILD_TOOLS=OFF \
       -DNCNN_BUILD_EXAMPLES=OFF \
       -DUSE_STATIC_MOLTENVK=ON \
-      -DPYTHON_LIBRARIES=$PYTHON_LIBRARIES \
       -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
+      -DCMAKE_OSX_ARCHITECTURES="x86_64" \
       -DOpenMP_C_FLAGS="-Xclang -fopenmp" \
       -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
       -DOpenMP_C_LIB_NAMES="libomp"\
       -DOpenMP_CXX_LIB_NAMES="libomp" \
-      -DOpenMP_libomp_LIBRARY="$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/lib/libomp.a" \
+      -DOpenMP_libomp_LIBRARY=$OPENMP_LIB \
+      -DCMAKE_SKIP_RPATH=TRUE \
+      -DCMAKE_SKIP_BUILD_RPATH=TRUE \
       -DVulkan_INCLUDE_DIR=$VULKAN_SDK/../MoltenVK/include \
-      -DVulkan_LIBRARY=$VULKAN_SDK/../MoltenVK/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a \
+      -DVulkan_LIBRARY=$VULKAN_SDK/../MoltenVK/static/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a \
       ../src
-cmake --build .
-cp libwaifu2x_vulkan.dylib waifu2x_vulkan.so
-strip -x waifu2x_vulkan.so
+cmake --build . -j4
+cp libsr_ncnn_vulkan.dylib sr_ncnn_vulkan.so
+strip -x sr_ncnn_vulkan.so
+cd ..
+
+# build arm64
+mkdir -p build_arm64 && cd build_arm64
+cmake -DCMAKE_BUILD_TYPE=Release \
+      -DNCNN_VULKAN=ON \
+      -DNCNN_BUILD_TOOLS=OFF \
+      -DNCNN_BUILD_EXAMPLES=OFF \
+      -DUSE_STATIC_MOLTENVK=ON \
+      -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
+      -DCMAKE_OSX_ARCHITECTURES="arm64" \
+      -DOpenMP_C_FLAGS="-Xclang -fopenmp" \
+      -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
+      -DOpenMP_C_LIB_NAMES="libomp"\
+      -DOpenMP_CXX_LIB_NAMES="libomp" \
+      -DOpenMP_libomp_LIBRARY=$OPENMP_LIB \
+      -DPNG_ARM_NEON=off \
+      -DCMAKE_SKIP_RPATH=TRUE \
+      -DCMAKE_SKIP_BUILD_RPATH=TRUE \
+      -DVulkan_INCLUDE_DIR=$VULKAN_SDK/../MoltenVK/include \
+      -DVulkan_LIBRARY=$VULKAN_SDK/../MoltenVK/static/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a \
+      ../src
+cmake --build . -j4
+cp libsr_ncnn_vulkan.dylib sr_ncnn_vulkan.so
+strip -x sr_ncnn_vulkan.so
 
 # Package
 cd $oldPath
 mkdir -p $PACKAGENAME
 cp README.md LICENSE $PACKAGENAME
-cp build/waifu2x_vulkan.so $PACKAGENAME
-cp -r waifu2x_vulkan/models test $PACKAGENAME
+lipo -create build/sr_ncnn_vulkan.so build_arm64/sr_ncnn_vulkan.so -o $PACKAGENAME/sr_ncnn_vulkan.so
+cp -r sr_ncnn_vulkan/models test $PACKAGENAME

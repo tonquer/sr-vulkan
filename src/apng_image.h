@@ -1,7 +1,8 @@
 #ifndef APNG_IMAGE_H
 #define APNG_IMAGE_H
+// #include <pngpriv.h>
 #include <png.h>
-#include <pngstruct.h>
+// #include <pngstruct.h>
 #include "waifu2x_main.h"
 
 //unsigned char dispose(int a, int b, unsigned char* pPrev, int n, int xres, int yres, int bpp, int w0, int h0, int x0, int y0, int* w1, int* h1, int* x1, int* y1)
@@ -152,7 +153,7 @@
 //}
 void apng_write_fn(png_structp png_ptr, unsigned char * data, size_t len)
 {
-    Task *v = (Task *) (png_ptr->io_ptr);
+    Task *v = (Task *) png_get_io_ptr(png_ptr);
     if (len <= 0) return;
     if(v->outSize + (int)len > v->allOutSize)
     {
@@ -165,7 +166,7 @@ void apng_write_fn(png_structp png_ptr, unsigned char * data, size_t len)
 
 void apng_read_fn(png_structp png_ptr, unsigned char* data, size_t len)
 {
-    Task* v = (Task*)(png_ptr->io_ptr);
+    Task* v = (Task*)png_get_io_ptr(png_ptr);
     if (len <= 0) return;
     if (v->allFileSize + (int)len > v->fileSize)
     {
@@ -175,7 +176,6 @@ void apng_read_fn(png_structp png_ptr, unsigned char* data, size_t len)
     v->allFileSize += (int)len;
 }
 
-//除了第一帧，其它帧都可能是不完整的帧，需要与前面的帧合并
 void BlendOver(unsigned char** rows_dst, unsigned char** rows_src, unsigned int x, unsigned int y, unsigned int w, unsigned int h)
 {
     unsigned int i, j;
@@ -209,7 +209,6 @@ void BlendOver(unsigned char** rows_dst, unsigned char** rows_src, unsigned int 
     }
 }
 
-//拼接每一行，存成一个块
 bool MakeFrame(unsigned char** rows, unsigned int w, unsigned int h, unsigned int channels, unsigned int m_nRowSize, ncnn::Mat& inimage)
 {
     inimage.create(w, h, (size_t)channels, channels);

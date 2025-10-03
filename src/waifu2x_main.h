@@ -15,6 +15,9 @@
     #pragma comment(lib, "comsuppw.lib")
 #endif
 #include "waifu2x.h"
+#include "realcugan.h"
+#include "realesrgan.h"
+#include "realsr.h"
 #include <time.h>
 #include <sys/timeb.h>
 #include <sys/stat.h>
@@ -27,6 +30,7 @@ typedef char Waifu2xChar;
 
 enum Waifu2xError {
     NotModel = -20,
+    NotSupport = -30
 };
 
 class Task
@@ -195,6 +199,7 @@ int waifu2x_stop();
 int waifu2x_clear();
 int waifu2x_set_debug(bool);
 int waifu2x_set_webp_quality(int);
+int waifu2x_set_realcugan_syncgap(int);
 int waifu2x_printf(void* p, const char* fmt, ...);
 int waifu2x_printf(void* p, const wchar_t* fmt, ...);
 int waifu2x_remove_wait(std::set<int>&);
@@ -206,6 +211,9 @@ static std::string ErrMsg;
 static std::vector<ncnn::Thread*> ProcThreads;
 static std::vector<ncnn::Thread*> OtherThreads;
 static std::vector<Waifu2x*> Waifu2xList;
+static std::vector<RealCUGAN*> RealCuganList;
+static std::vector<RealSR*> RealSrList;
+static std::vector<RealESRGAN*> RealEsrganList;
 
 class WriteData
 {
@@ -235,4 +243,58 @@ static void write_jpg_to_mem(void *writeData, void *data, int size)
 }
 
 
+static const std::string AllModel[] =
+{
+    "WAIFU2X_CUNET_UP1X_DENOISE0X",
+    "WAIFU2X_CUNET_UP1X_DENOISE1X",
+    "WAIFU2X_CUNET_UP1X_DENOISE2X",
+    "WAIFU2X_CUNET_UP1X_DENOISE3X",
+    "WAIFU2X_CUNET_UP2X",
+    "WAIFU2X_CUNET_UP2X_DENOISE0X",
+    "WAIFU2X_CUNET_UP2X_DENOISE1X",
+    "WAIFU2X_CUNET_UP2X_DENOISE2X",
+    "WAIFU2X_CUNET_UP2X_DENOISE3X",
+
+    "WAIFU2X_ANIME_UP2X",
+    "WAIFU2X_ANIME_UP2X_DENOISE0X",
+    "WAIFU2X_ANIME_UP2X_DENOISE1X",
+    "WAIFU2X_ANIME_UP2X_DENOISE2X",
+    "WAIFU2X_ANIME_UP2X_DENOISE3X",
+
+    "WAIFU2X_PHOTO_UP2X",
+    "WAIFU2X_PHOTO_UP2X_DENOISE0X",
+    "WAIFU2X_PHOTO_UP2X_DENOISE1X",
+    "WAIFU2X_PHOTO_UP2X_DENOISE2X",
+    "WAIFU2X_PHOTO_UP2X_DENOISE3X",
+
+    "REALCUGAN_PRO_UP2X",
+    "REALCUGAN_PRO_UP2X_CONSERVATIVE",
+    "REALCUGAN_PRO_UP2X_DENOISE3X",
+
+    "REALCUGAN_PRO_UP3X",
+    "REALCUGAN_PRO_UP3X_CONSERVATIVE",
+    "REALCUGAN_PRO_UP3X_DENOISE3X",
+
+    "REALCUGAN_SE_UP2X",
+    "REALCUGAN_SE_UP2X_CONSERVATIVE",
+    "REALCUGAN_SE_UP2X_DENOISE1X",
+    "REALCUGAN_SE_UP2X_DENOISE2X",
+    "REALCUGAN_SE_UP2X_DENOISE3X",
+
+    "REALCUGAN_SE_UP3X",
+    "REALCUGAN_SE_UP3X_CONSERVATIVE",
+    "REALCUGAN_SE_UP3X_DENOISE3X",
+
+    "REALCUGAN_SE_UP4X",
+    "REALCUGAN_SE_UP4X_CONSERVATIVE",
+    "REALCUGAN_SE_UP4X_DENOISE3X",
+
+    "REALSR_DF2K_UP4X",
+
+    "REALESRGAN_ANIMAVIDEOV3_UP2X",
+    "REALESRGAN_ANIMAVIDEOV3_UP3X",
+    "REALESRGAN_ANIMAVIDEOV3_UP4X",
+    "REALESRGAN_X4PLUS_UP4X",
+    "REALESRGAN_X4PLUSANIME_UP4X"
+};
 #endif // WAIFU2X_MAIN_H

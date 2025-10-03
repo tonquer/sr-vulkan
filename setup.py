@@ -4,11 +4,15 @@ from setuptools.command.build_ext import build_ext
 import subprocess
 from distutils.core import Extension
 import platform
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+IsMacosBuildUniversal2 = False
 
 long_description = \
 """
-# waifu2x-ncnn-vulkan-python
-- This is modified [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan), Export pyd and so files to Python
+# sr-ncnn-vulkan-python
+- This is modified [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan), [realsr-ncnn-vulkan](https://github.com/nihui/realsr-ncnn-vulkan) [realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan), Export pyd and so files to Python
 - Support Linux, Windows, MacOs
 - Support import JPG, PNG, BMP, GIF, WEBP, Animated WEBP, APNG
 - Support export JPG, PNG, BMP, WEBP, Animated WEBP, APNG
@@ -16,39 +20,78 @@ long_description = \
 
 # Install
 ```shell
-pip install waifu2x-vulkan
+pip install sr-ncnn-vulkan
 ```
 
 # Use
 ```shell
-from waifu2x_vulkan import waifu2x_vulkan
+from sr-ncnn-vulkan import sr-ncnn-vulkan as sr
 
 # init
-sts = waifu2x_vulkan.init()
+sts = sr.init()
 print("init, code:{}".format(str(sts)))
 isCpuModel = False
 if sts < 0:
     # cpu model
     isCpuModel = True
     
-gpuList = waifu2x_vulkan.getGpuInfo()
+gpuList = sr.getGpuInfo()
 print(gpuList)
-sts = waifu2x_vulkan.initSet(gpuId=0)
+sts = sr.initSet(gpuId=0)
 print("init set, code:{}".format(str(sts)))
 
 # Model List:
-#'MODEL_ANIME_STYLE_ART_RGB_NOISE0', 'MODEL_ANIME_STYLE_ART_RGB_NOISE0_TTA', 'MODEL_ANIME_STYLE_ART_RGB_NOISE1', 'MODEL_ANIME_STYLE_ART_RGB_NOISE1_TTA', 'MODEL_ANIME_STYLE_ART_RGB_NOISE2', 'MODEL_ANIME_STYLE_ART_RGB_NOISE2_TTA', 'MODEL_ANIME_STYLE_ART_RGB_NOISE3', 'MODEL_ANIME_STYLE_ART_RGB_NOISE3_TTA', 'MODEL_ANIME_STYLE_ART_RGB_NO_NOISE', 'MODEL_ANIME_STYLE_ART_RGB_NO_NOISE_TTA', 'MODEL_CUNET_NOISE0', 'MODEL_CUNET_NOISE0_TTA', 'MODEL_CUNET_NOISE1', 'MODEL_CUNET_NOISE1_TTA', 'MODEL_CUNET_NOISE2', 'MODEL_CUNET_NOISE2_TTA', 'MODEL_CUNET_NOISE3', 'MODEL_CUNET_NOISE3_TTA', 'MODEL_CUNET_NO_NOISE', 'MODEL_CUNET_NO_NOISE_TTA', 'MODEL_CUNET_NO_SCALE_NOISE0', 'MODEL_CUNET_NO_SCALE_NOISE0_TTA', 'MODEL_CUNET_NO_SCALE_NOISE1', 'MODEL_CUNET_NO_SCALE_NOISE1_TTA', 'MODEL_CUNET_NO_SCALE_NOISE2', 'MODEL_CUNET_NO_SCALE_NOISE2_TTA', 'MODEL_CUNET_NO_SCALE_NOISE3', 'MODEL_CUNET_NO_SCALE_NOISE3_TTA', 'MODEL_CUNET_NO_SCALE_NO_NOISE', 'MODEL_CUNET_NO_SCALE_NO_NOISE_TTA', 'MODEL_PHOTO_NOISE0', 'MODEL_PHOTO_NOISE0_TTA', 'MODEL_PHOTO_NOISE1', 'MODEL_PHOTO_NOISE1_TTA', 'MODEL_PHOTO_NOISE2', 'MODEL_PHOTO_NOISE2_TTA', 'MODEL_PHOTO_NOISE3', 'MODEL_PHOTO_NOISE3_TTA', 'MODEL_PHOTO_NO_NOISE', 'MODEL_PHOTO_NO_NOISE_TTA'
-
+#    MODEL_WAIFU2X_CUNET_UP1X_DENOISE0X",
+#    MODEL_WAIFU2X_CUNET_UP1X_DENOISE1X",
+#    MODEL_WAIFU2X_CUNET_UP1X_DENOISE2X",
+#    MODEL_WAIFU2X_CUNET_UP1X_DENOISE3X",
+#    MODEL_WAIFU2X_CUNET_UP2X",
+#    MODEL_WAIFU2X_CUNET_UP2X_DENOISE0X",
+#    MODEL_WAIFU2X_CUNET_UP2X_DENOISE1X",
+#    MODEL_WAIFU2X_CUNET_UP2X_DENOISE2X",
+#    MODEL_WAIFU2X_CUNET_UP2X_DENOISE3X",
+#    MODEL_WAIFU2X_ANIME_UP2X"
+#    MODEL_WAIFU2X_ANIME_UP2X_DENOISE0X",
+#    MODEL_WAIFU2X_ANIME_UP2X_DENOISE1X",
+#    MODEL_WAIFU2X_ANIME_UP2X_DENOISE2X",
+#    MODEL_WAIFU2X_ANIME_UP2X_DENOISE3X",
+#    MODEL_WAIFU2X_PHOTO_UP2X",
+#    MODEL_WAIFU2X_PHOTO_UP2X_DENOISE0X",
+#    MODEL_WAIFU2X_PHOTO_UP2X_DENOISE1X",
+#    MODEL_WAIFU2X_PHOTO_UP2X_DENOISE2X",
+#    MODEL_WAIFU2X_PHOTO_UP2X_DENOISE3X",
+#    
+#    "MODEL_REALCUGAN_PRO_UP2X",
+#    "MODEL_REALCUGAN_PRO_UP2X_CONSERVATIVE",
+#    "MODEL_REALCUGAN_PRO_UP2X_DENOISE3X",
+#    "MODEL_REALCUGAN_PRO_UP3X",
+#    "MODEL_REALCUGAN_PRO_UP3X_CONSERVATIVE",
+#    "MODEL_REALCUGAN_PRO_UP3X_DENOISE3X",
+#    "MODEL_REALCUGAN_SE_UP2X",
+#    "MODEL_REALCUGAN_SE_UP2X_CONSERVATIVE",
+#    "MODEL_REALCUGAN_SE_UP2X_DENOISE1X",
+#    "MODEL_REALCUGAN_SE_UP2X_DENOISE2X",
+#    "MODEL_REALCUGAN_SE_UP2X_DENOISE3X",
+#    "MODEL_REALCUGAN_SE_UP3X",
+#    "MODEL_REALCUGAN_SE_UP3X_CONSERVATIVE",
+#    "MODEL_REALCUGAN_SE_UP3X_DENOISE3X",
+#    "MODEL_REALCUGAN_SE_UP4X",
+#    "MODEL_REALCUGAN_SE_UP4X_CONSERVATIVE",
+#    "MODEL_REALCUGAN_SE_UP4X_DENOISE3X",
+#    
+#    "MODEL_REALSR_DF2K_UP4X"
+    
+    
 # add picture ...
-# waifu2x.add(data=imgData, modelIndex=waifu2x_vulkan.MODEL_ANIME_STYLE_ART_RGB_NOISE0, backId=0, scale=2.5)
-# waifu2x.add(data=imgData, modelIndex=waifu2x_vulkan.MODEL_ANIME_STYLE_ART_RGB_NOISE0, backId=0, format="webp", width=1000, high=1000)
+# sr.add(data=imgData, modelIndex=sr.MODEL_ANIME_STYLE_ART_RGB_NOISE0, backId=0, scale=2.5)
+# sr.add(data=imgData, modelIndex=sr.MODEL_ANIME_STYLE_ART_RGB_NOISE0, backId=0, format="webp", width=1000, high=1000)
 
 # load picture...
-# newData, format, backId, tick = waifu2x.load(0)
+# newData, format, backId, tick = sr.load(0)
 ```
 
 """
-Version = "1.1.6"
+Version = "1.2.0"
 
 Plat = sys.platform
 
@@ -56,9 +99,9 @@ print(Plat)
 
 build_temp = "build/temp/"
 if Plat == "darwin":
-    example_module = Extension('waifu2x_vulkan.waifu2x_vulkan',
+    example_module = Extension('sr_ncnn_vulkan.sr_ncnn_vulkan',
     include_dirs=["build/temp/ncnntmp/src", "build/temp/pngtmp/", "build/temp/pngtmp/zlib", "src/ncnn/src", "src/libwebp/src",  "src/libpng", "src/libpng/zlib", "build/temp/src", "VulkanSDK/macos/include"],
-    sources=['src/waifu2x_main.cpp', 'src/waifu2x_py.cpp', 'src/waifu2x.cpp'],
+    sources=['src/waifu2x_main.cpp', 'src/waifu2x_py.cpp', 'src/waifu2x.cpp', 'src/realcugan.cpp', 'src/realsr.cpp', 'src/realesrgan.cpp'],
     extra_objects=[
         build_temp + "/ncnntmp/src/libncnn.a",
         build_temp + "/webptmp/libwebp.a",
@@ -85,9 +128,9 @@ if Plat == "darwin":
     )
     models = [example_module]
 elif Plat in ["win32", "win64"]:
-    example_module = Extension('waifu2x_vulkan.waifu2x_vulkan',
+    example_module = Extension('sr_ncnn_vulkan.sr_ncnn_vulkan',
     include_dirs=["build/temp/ncnntmp/src", "build/temp/pngtmp/", "build/temp/pngtmp/zlib", "src/ncnn/src", "src/libwebp/src", "src/libpng", "src/libpng/zlib", "build/temp/src", "VulkanSDK/Include"],
-    sources=['src/waifu2x_main.cpp', 'src/waifu2x_py.cpp', 'src/waifu2x.cpp'],
+    sources=['src/waifu2x_main.cpp', 'src/waifu2x_py.cpp', 'src/waifu2x.cpp', 'src/realcugan.cpp', 'src/realsr.cpp', 'src/realesrgan.cpp'],
     define_macros=[("WIN32",1), ("NOMINMAX",1), ("NDEBUG",1)],
     extra_objects=[
         build_temp + "/ncnntmp/src/Release/ncnn.lib",
@@ -111,9 +154,9 @@ else:
     if 'arm64' in platform.platform() or 'aarch64' in platform.platform():
         os.rename('VulkanSDK/linux/libvulkan.so', 'VulkanSDK/linux/libvulkan.x86.so')
         os.rename('VulkanSDK/linux/libvulkan.aarch64.so', 'VulkanSDK/linux/libvulkan.so')
-    example_module = Extension('waifu2x_vulkan.waifu2x_vulkan',
+    example_module = Extension('sr_ncnn_vulkan.sr_ncnn_vulkan',
     include_dirs=["build/temp/ncnntmp/src", "build/temp/pngtmp/", "build/temp/pngtmp/zlib", "src/ncnn/src", "src/libwebp/src",  "src/libpng", "src/libpng/zlib", "build/temp/src", "VulkanSDK/Include"],
-    sources=['src/waifu2x_main.cpp', 'src/waifu2x_py.cpp', 'src/waifu2x.cpp'],
+    sources=['src/waifu2x_main.cpp', 'src/waifu2x_py.cpp', 'src/waifu2x.cpp', 'src/realcugan.cpp', 'src/realsr.cpp', 'src/realesrgan.cpp'],
     extra_objects=[
         build_temp + "/ncnntmp/src/libncnn.a",
         build_temp + "/webptmp/libwebp.a",
@@ -145,6 +188,21 @@ PLAT_TO_CMAKE = {
 }
 
 class CMakeBuild(build_ext):
+    def to_build_ncnn(self):
+        return
+    
+    def to_build_zlib(self):
+        return
+    
+    def to_build_png(self):
+        return
+    
+    def to_build_webp(self):
+        return
+    
+    def to_build_jpeg(self):
+        return
+    
     def build_extension(self, ext):
         extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
         extdir = os.path.join(extdir, "ncnn")
@@ -166,10 +224,6 @@ class CMakeBuild(build_ext):
             "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={}".format(extdir),
             "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE={}".format(extdir),
             "-DCMAKE_BUILD_TYPE={}".format(cfg),  # not used on MSVC, but no harm
-            "-DNCNN_VULKAN=ON",
-            "-DNCNN_BUILD_BENCHMARK=OFF",
-            "-DNCNN_BUILD_EXAMPLES=OFF",
-            "-DNCNN_BUILD_TOOLS=OFF",
         ]
         build_args = []
 
@@ -210,7 +264,15 @@ class CMakeBuild(build_ext):
             if hasattr(self, "parallel") and self.parallel:
                 # CMake 3.12+ only.
                 build_args += ["-j{}".format(self.parallel)]
-
+        all_build_args = []
+        
+        if Plat == "darwin" and ("arm64" in platform.machine() or IsMacosBuildUniversal2):
+                all_build_args += [
+                    "-DCMAKE_SYSTEM_PROCESSOR=arm64;x86_64",
+                    "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64",
+                    "-DFLAG_-mno-sse2=OFF"
+                ]
+        cmake_args += all_build_args
         ncnn_build_temp = build_temp + "ncnntmp/"
         webp_build_temp = build_temp + "webptmp/"
         png_build_temp = build_temp + "pngtmp/"
@@ -226,8 +288,9 @@ class CMakeBuild(build_ext):
             "-DPNG_STATIC=ON",
             "-DPNG_SHARED=OFF",
             "-DPNG_TESTS=OFF",
+            "-DPNG_ARM_NEON=off",
             "-DPNG_EXECUTABLES=OFF",
-        ]
+        ] + all_build_args
         subprocess.check_call(
             ["cmake", os.path.abspath("src/libpng")] + png_args, cwd=png_build_temp
         )
@@ -260,10 +323,6 @@ class CMakeBuild(build_ext):
 
         # build ncnn
         if Plat == "darwin":
-            if "86" not in platform.machine():
-                cmake_args += [
-                    "-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64",
-                ]
             cmake_args += [
                 "-DOpenMP_C_FLAGS=\"-Xclang -fopenmp\"",
                 "-DOpenMP_CXX_FLAGS=\"-Xclang -fopenmp\"",
@@ -272,7 +331,7 @@ class CMakeBuild(build_ext):
                 "-DOpenMP_libomp_LIBRARY={}".format(os.path.abspath("VulkanSDK/macos/libomp.a")),
                 "-DVulkan_LIBRARY={}".format(os.path.abspath("VulkanSDK/macos")),
                 "-DVulkan_INCLUDE_DIR={}".format(os.path.abspath("VulkanSDK/macos/include")),
-            ]
+            ] + all_build_args
         elif Plat in ["win32", "win64"]:
             cmake_args += [
                 "-DVulkan_LIBRARY={}".format(os.path.abspath("VulkanSDK/windows")),
@@ -294,15 +353,15 @@ class CMakeBuild(build_ext):
         return super(self.__class__, self).build_extension(ext)
 
 setuptools.setup(
-    name="waifu2x-vulkan",
+    name="sr-ncnn-vulkan",
     version=Version,
     author="tonquer",
     license="MIT",
     author_email="tonquer@qq.com",
-    description="A waifu2x python tool, use nihui/waifu2x-ncnn-vulkan",
+    description="A super resolution python tool, use nihui/waifu2x-ncnn-vulkan, nihui/realsr-ncnn-vulkan, nihui/realcugan-ncnn-vulkan, xinntao/Real-ESRGAN-ncnn-vulkan",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/tonquer/waifu2x-vulkan",
+    url="https://github.com/tonquer/sr-ncnn-vulkan",
     packages=setuptools.find_packages(),
     install_requires=[],
     classifiers=[
@@ -313,13 +372,15 @@ setuptools.setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
         "License :: OSI Approved :: MIT License",
     ],
     python_requires = ">=3.6",
     include_package_data=True,
     entry_points={
         "pyinstaller40": [
-            "hook-dirs = waifu2x_vulkan:get_hook_dirs"
+            "hook-dirs = sr_ncnn_vulkan:get_hook_dirs"
         ]
     },
     cmdclass={"build_ext": CMakeBuild},

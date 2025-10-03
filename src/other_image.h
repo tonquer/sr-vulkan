@@ -21,6 +21,8 @@
 #include "waifu2x_main.h"
 #include "webp_image.h"
 #include "apng_image.h"
+#include "png_image.h"
+#include "jpeg_image.h"
 
 bool bmp_save(Task &v)
 {
@@ -50,21 +52,28 @@ bool bmp_save(Task &v)
 
 bool png_save(Task& v)
 {
-    bool success;
+    bool success = true;
     /*#if _WIN32
     success = wic_encode_image_to_data(v.outimage.w, v.outimage.h, v.outimage.elempack, v.outimage.data, v.out, v.outSize, v.modelIndex, v.toW, v.toH, w, h);
 #else*/
     {
         ncnn::Mat& outimage = **v.outImage.begin();
-        unsigned char* odata = (unsigned char*)malloc(v.toW * v.toH * outimage.elempack);
-        stbir_resize((unsigned char*)outimage.data, outimage.w, outimage.h, 0, odata, v.toW, v.toH, 0, STBIR_TYPE_UINT8, outimage.elempack, STBIR_ALPHA_CHANNEL_NONE, 0,
-            STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
-            STBIR_FILTER_BOX, STBIR_FILTER_BOX,
-            STBIR_COLORSPACE_SRGB, nullptr
-        );
-        v.out = stbi_write_png_to_mem(odata, 0, v.toW, v.toH, outimage.elempack, &v.outSize);
-        success = (v.out != nullptr);
-        stbi_image_free(odata);
+        if (v.toW != outimage.w || v.toH != outimage.h)
+        {
+            unsigned char* odata = (unsigned char*)malloc(v.toW * v.toH * outimage.elempack);
+            stbir_resize((unsigned char*)outimage.data, outimage.w, outimage.h, 0, odata, v.toW, v.toH, 0, STBIR_TYPE_UINT8, outimage.elempack, STBIR_ALPHA_CHANNEL_NONE, 0,
+                STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
+                STBIR_FILTER_BOX, STBIR_FILTER_BOX,
+                STBIR_COLORSPACE_SRGB, nullptr
+            );
+            success = png_save_memery(v, v.toW, v.toH, outimage.elempack, (const unsigned char*)odata);
+            //v.out = stbi_write_png_to_mem(odata, 0, v.toW, v.toH, outimage.elempack, &v.outSize);
+            stbi_image_free(odata);
+            //success = (v.out != nullptr);
+        }
+        else {
+            success = png_save_memery(v, outimage.w, outimage.h, outimage.elempack, (const unsigned char*)outimage.data);
+        }
     }
     return success;
     //#endif
@@ -74,24 +83,33 @@ bool jpg_save(Task& v)
 {
     bool success;
     ncnn::Mat& outimage = **v.outImage.begin();
-    unsigned char* odata = (unsigned char*)malloc(v.toW * v.toH * outimage.elempack);
-    stbir_resize((unsigned char*)outimage.data, outimage.w, outimage.h, 0, odata, v.toW, v.toH, 0, STBIR_TYPE_UINT8, outimage.elempack, STBIR_ALPHA_CHANNEL_NONE, 0,
-        STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
-        STBIR_FILTER_BOX, STBIR_FILTER_BOX,
-        STBIR_COLORSPACE_SRGB, nullptr
-    );
-    WriteData data(v.toH, v.toW, outimage.elempack);
-    stbi_write_jpg_to_func((stbi_write_func*)write_jpg_to_mem, (void*)&data, v.toW, v.toH, outimage.elempack, odata, 100);
-    stbi_image_free(odata);
-    if (data.writeSize > 0)
+    if (v.toW != outimage.w || v.toH != outimage.h)
     {
-        success = true;
-        v.out = malloc(data.writeSize);
-        v.outSize = data.writeSize;
-        memcpy(v.out, data.data, v.outSize);
+        unsigned char* odata = (unsigned char*)malloc(v.toW * v.toH * outimage.elempack);
+        stbir_resize((unsigned char*)outimage.data, outimage.w, outimage.h, 0, odata, v.toW, v.toH, 0, STBIR_TYPE_UINT8, outimage.elempack, STBIR_ALPHA_CHANNEL_NONE, 0,
+            STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
+            STBIR_FILTER_BOX, STBIR_FILTER_BOX,
+            STBIR_COLORSPACE_SRGB, nullptr
+        );
+        success = jpeg_save_memery(v, v.toW, v.toH, outimage.elempack, (const unsigned char*)odata);
+        stbi_image_free(odata);
+
+        /*WriteData data(v.toH, v.toW, outimage.elempack);
+        stbi_write_jpg_to_func((stbi_write_func*)write_jpg_to_mem, (void*)&data, v.toW, v.toH, outimage.elempack, odata, 100);
+        stbi_image_free(odata);
+        if (data.writeSize > 0)
+        {
+            success = true;
+            v.out = malloc(data.writeSize);
+            v.outSize = data.writeSize;
+            memcpy(v.out, data.data, v.outSize);
+        }
+        else {
+            success = false;
+        }*/
     }
     else {
-        success = false;
+        success = jpeg_save_memery(v, outimage.w, outimage.h, outimage.elempack, (const unsigned char*)outimage.data);
     }
     return success;
 }
@@ -218,14 +236,22 @@ bool to_load(Task& v)
 {
 
     bool isSuc=true;
-    isSuc = webp_load(v);
+    isSuc = load_webp(v);
     if (!isSuc) 
     { 
-        isSuc = webp_load_ani(v); 
+        isSuc = load_webp_ani(v);
     }
     if (!isSuc)
     {
         isSuc = load_apng(v);
+    }
+    if (!isSuc)
+    {
+        isSuc = load_jpeg(v);
+    }
+    if (!isSuc)
+    {
+        isSuc = load_png(v);
     }
     if(!isSuc)
     {

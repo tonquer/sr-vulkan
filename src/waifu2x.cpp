@@ -185,7 +185,7 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage,int tilesize2
     const int xtiles = (w + TILE_SIZE_X - 1) / TILE_SIZE_X;
     const int ytiles = (h + TILE_SIZE_Y - 1) / TILE_SIZE_Y;
 
-    const size_t in_out_tile_elemsize = opt.use_fp16_storage ? 2u : 4u;
+    const size_t in_out_tile_elemsize = (opt.use_fp16_storage || opt.use_fp16_packed) ? 2u : 4u;
 
     //#pragma omp parallel for num_threads(2)
     for (int yi = 0; yi < ytiles; yi++)
@@ -206,9 +206,9 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage,int tilesize2
         int in_tile_y1 = std::min((yi + 1) * TILE_SIZE_Y + prepadding_bottom, h);
 
         ncnn::Mat in;
-        if (opt.use_fp16_storage && opt.use_int8_storage)
+        if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
         {
-            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + in_tile_y0 * w * channels, (size_t)channels, 1);
+            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + (size_t)in_tile_y0 * w * channels, (size_t)channels, 1);
         }
         else
         {
@@ -248,7 +248,7 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage,int tilesize2
         int out_tile_y1 = std::min((yi + 1) * TILE_SIZE_Y, h);
 
         ncnn::VkMat out_gpu;
-        if (opt.use_fp16_storage && opt.use_int8_storage)
+        if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
         {
             out_gpu.create(w * scale, (out_tile_y1 - out_tile_y0) * scale, (size_t)channels, 1, blob_vkallocator);
         }
@@ -509,23 +509,23 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage,int tilesize2
         {
             ncnn::Mat out;
 
-            if (opt.use_fp16_storage && opt.use_int8_storage)
+            if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
             {
-                out = ncnn::Mat(out_gpu.w, out_gpu.h, (unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, (size_t)channels, 1);
+                out = ncnn::Mat(out_gpu.w, out_gpu.h, (unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, (size_t)channels, 1, opt.blob_allocator);
             }
 
             cmd.record_clone(out_gpu, out, opt);
 
             cmd.submit_and_wait();
 
-            if (!(opt.use_fp16_storage && opt.use_int8_storage))
+            if (!((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage))
             {
                 if (channels == 3)
                 {
 //#if _WIN32
                     //out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB2BGR);
 //#else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * (size_t)channels, ncnn::Mat::PIXEL_RGB);
 //#endif
                 }
                 if (channels == 4)
@@ -533,7 +533,7 @@ int Waifu2x::process(const ncnn::Mat& inimage, ncnn::Mat& outimage,int tilesize2
 //#if _WIN32
                     //out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA2BGRA);
 //#else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * (size_t)channels, ncnn::Mat::PIXEL_RGBA);
 //#endif
                 }
             }
@@ -607,7 +607,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
             int in_tile_x1 = std::min((xi + 1) * TILE_SIZE_X + prepadding_right, w);
 
             // crop tile
-            ncnn::Mat in;
+            ncnn::Mat in, in_nopad;
             {
                 if (channels == 3)
                 {
@@ -622,8 +622,10 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
 //#if _WIN32
                     //in = ncnn::Mat::from_pixels_roi(pixeldata, ncnn::Mat::PIXEL_BGRA2RGBA, w, h, in_tile_x0, in_tile_y0, in_tile_x1 - in_tile_x0, in_tile_y1 - in_tile_y0);
 //#else
-                    in = ncnn::Mat::from_pixels_roi(pixeldata, ncnn::Mat::PIXEL_RGBA, w, h, in_tile_x0, in_tile_y0, in_tile_x1 - in_tile_x0, in_tile_y1 - in_tile_y0);
+                    //in = ncnn::Mat::from_pixels_roi(pixeldata, ncnn::Mat::PIXEL_RGBA, w, h, in_tile_x0, in_tile_y0, in_tile_x1 - in_tile_x0, in_tile_y1 - in_tile_y0);
 //#endif
+                    in_nopad = ncnn::Mat::from_pixels_roi(pixeldata, ncnn::Mat::PIXEL_RGBA, w, h, xi * TILE_SIZE_X, yi * TILE_SIZE_Y, tile_w_nopad, tile_h_nopad);
+                    in = ncnn::Mat::from_pixels_roi(pixeldata, ncnn::Mat::PIXEL_RGBA, w, h, in_tile_x0, in_tile_y0, in_tile_x1 - in_tile_x0, in_tile_y1 - in_tile_y0);
                 }
             }
 
@@ -652,7 +654,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
 
                     if (channels == 4)
                     {
-                        in_alpha_tile = in.channel_range(3, 1).clone();
+                        in_alpha_tile = in_nopad.channel_range(3, 1).clone();
                     }
                 }
 
@@ -662,6 +664,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
                     int pad_bottom = std::max(std::min((yi + 1) * TILE_SIZE_Y + prepadding_bottom - h, prepadding_bottom), 0);
                     int pad_left = std::max(prepadding - xi * TILE_SIZE_X, 0);
                     int pad_right = std::max(std::min((xi + 1) * TILE_SIZE_X + prepadding_right - w, prepadding_right), 0);
+
                     ncnn::Mat in_tile_padded;
                     ncnn::copy_make_border(in_tile[0], in_tile_padded, pad_top, pad_bottom, pad_left, pad_right, ncnn::BORDER_REPLICATE, 0.f, net.opt);
                     in_tile[0] = in_tile_padded;
@@ -778,12 +781,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
 
                     if (channels == 4)
                     {
-                        int pad_top = std::max(yi * TILE_SIZE_Y - in_tile_y0, 0);
-                        int pad_left = std::max(xi * TILE_SIZE_X - in_tile_x0, 0);
-                        for (int i = 0; i < out.h; i++)
-                        {
-                            memcpy(out.channel_range(3, 1).row(i), out_alpha_tile.row(pad_top * scale + i) + pad_left * scale, out.w * out.elemsize);
-                        }
+                        memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
                     }
                 }
             }
@@ -807,7 +805,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
 
                     if (channels == 4)
                     {
-                        in_alpha_tile = in.channel_range(3, 1).clone();
+                        in_alpha_tile = in_nopad.channel_range(3, 1).clone();
                     }
                 }
 
@@ -866,14 +864,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
 
                     if (channels == 4)
                     {
-                        int pad_top = std::max(yi * TILE_SIZE_Y - in_tile_y0, 0);
-                        int pad_left = std::max(xi * TILE_SIZE_X - in_tile_x0, 0);
-                        
-                        for (int i = 0; i < out.h; i++)
-                        {
-                            memcpy(out.channel_range(3, 1).row(i), out_alpha_tile.row(pad_top * scale + i)+ pad_left * scale, out.w * out.elemsize);
-                        }
-                        
+                        memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
                     }
                 }
             }
@@ -884,7 +875,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
 //#if _WIN32
                     //out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB2BGR, w * scale * channels);
 //#else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB, w * scale * channels);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB, w * scale * channels);
 //#endif
                 }
                 if (channels == 4)
@@ -892,7 +883,7 @@ int Waifu2x::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tile
 //#if _WIN32
                     //out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA2BGRA, w * scale * channels);
 //#else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA, w * scale * channels);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA, w * scale * channels);
 //#endif
                 }
             }

@@ -1,52 +1,27 @@
 #include "waifu2x_py.h"
 
-
 PyMODINIT_FUNC
-PyInit_waifu2x_vulkan(void)
+PyInit_sr_ncnn_vulkan(void)
 {
     PyObject* m;
 
     m = PyModule_Create(&spammodule);
     if (m == NULL)
         return NULL;
-    std::string models[3] = { "CUNET", "ANIME_STYLE_ART_RGB", "PHOTO" };
+
+    char modelName[256];
+    char modelNameTTa[256];
     int index = 0;
-    for (int j = 0; j < 3; j++)
+    int len = sizeof(AllModel) / sizeof(AllModel[0]);
+    for (int j = 0; j < len; j++)
     {
-        std::string name = models[j];
-        for (int i = -1; i <= 3; i++)
-        {
-            char modelName[256];
-            char modelNameTTa[256];
-            if (i == -1)
-            {
-                sprintf(modelName, "MODEL_%s_NO_NOISE", name.c_str());
-            }
-            else
-            {
-                sprintf(modelName, "MODEL_%s_NOISE%d", name.c_str(), i);
-            }
-            sprintf(modelNameTTa, "%s_TTA", modelName);
-            PyModule_AddIntConstant(m, modelName, index++);
-            PyModule_AddIntConstant(m, modelNameTTa, index++);
-        }
-    }
-    for (int i = -1; i <= 3; i++)
-    {
-        char modelName[256];
-        char modelNameTTa[256];
-        if (i == -1)
-        {
-            sprintf(modelName, "MODEL_CUNET_NO_SCALE_NO_NOISE");
-        }
-        else
-        {
-            sprintf(modelName, "MODEL_CUNET_NO_SCALE_NOISE%d", i);
-        }
+        std::string name = AllModel[j];
+;       sprintf(modelName, "MODEL_%s", name.c_str());
         sprintf(modelNameTTa, "%s_TTA", modelName);
         PyModule_AddIntConstant(m, modelName, index++);
         PyModule_AddIntConstant(m, modelNameTTa, index++);
     }
+
     return m;
 }
 
@@ -78,7 +53,7 @@ waifu2x_py_init_set(PyObject* self, PyObject* args, PyObject* kwargs)
     
     if (!noSetDefaultPath && waifu2x_get_path_size() <= 0)
     {
-        PyObject* pyModule = PyImport_ImportModule("waifu2x_vulkan");
+        PyObject* pyModule = PyImport_ImportModule("sr_ncnn_vulkan");
         PyObject* v = PyObject_GetAttrString(pyModule, "__file__");
 
         PyObject* pathModule = PyImport_ImportModule("os.path");
@@ -118,6 +93,20 @@ waifu2x_py_set_webp_quality(PyObject* self, PyObject* args)
 }
 
 static PyObject*
+waifu2x_py_set_realcugan_syncgap(PyObject* self, PyObject* args)
+{
+    int syncgap = 0;
+    if (!PyArg_ParseTuple(args, "i", &syncgap))
+        PyLong_FromLong(-1);
+    if (syncgap <= 0 || syncgap > 3)
+    {
+        return PyLong_FromLong(-1);
+    }
+    waifu2x_set_realcugan_syncgap(syncgap);
+    return PyLong_FromLong(0);
+}
+
+static PyObject*
 waifu2x_py_clear(PyObject* self, PyObject* args)
 {
     if (!IsInitSet)
@@ -147,6 +136,24 @@ waifu2x_py_set_debug(PyObject* self, PyObject* args)
 }
 
 static PyObject*
+waifu2x_py_get_model_name(PyObject* self, PyObject* args)
+{
+    Py_ssize_t modelIndex = 0;
+    if (!PyArg_ParseTuple(args, "i", &modelIndex))
+        Py_RETURN_NONE;
+    modelIndex = modelIndex / 2;
+    int len = sizeof(AllModel) / sizeof(AllModel[0]);
+    char errMsg[512];
+    if (modelIndex >= len) {
+        sprintf(errMsg, "[SR_NCNN] index error, index:%d, max_index:%d", modelIndex, len);
+        waifu2x_set_error(errMsg);
+        Py_RETURN_NONE;
+    }
+    std::string name = AllModel[modelIndex];
+    return PyUnicode_FromString(name.c_str());
+}
+
+static PyObject*
 waifu2x_py_set_path(PyObject* self, PyObject* args)
 {
     int sts;
@@ -166,7 +173,7 @@ waifu2x_py_set_path(PyObject* self, PyObject* args)
     }
     else
     {
-        PyObject* pyModule = PyImport_ImportModule("waifu2x_vulkan");
+        PyObject* pyModule = PyImport_ImportModule("sr_ncnn_vulkan");
         PyObject* v = PyObject_GetAttrString(pyModule, "__file__");
 
         PyObject* pathModule = PyImport_ImportModule("os.path");
@@ -258,7 +265,7 @@ waifu2x_py_add(PyObject* self, PyObject* args, PyObject* kwargs)
         return PyLong_FromLong(-1);
     }
     const char* b = NULL;
-    unsigned int size;
+    Py_ssize_t size;
     int sts = 1;
     Py_ssize_t  callBack = 0;
     Py_ssize_t  modelIndex = 0;
@@ -376,7 +383,7 @@ waifu2x_py_load(PyObject* self, PyObject* args, PyObject* kwargs)
     {
         Py_RETURN_NONE;
     }
-    PyObject* data = Py_BuildValue("y#sid", (char*)out, outSize, format, callBack, tick);
+    PyObject* data = Py_BuildValue("y#sid", (char*)out, (Py_ssize_t)outSize, format, callBack, tick);
     if (out) free(out);
     return data;
 }

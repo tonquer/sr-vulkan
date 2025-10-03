@@ -12,10 +12,16 @@ static PyObject*
 waifu2x_py_set_debug(PyObject* self, PyObject* args);
 
 static PyObject*
+waifu2x_py_get_model_name(PyObject* self, PyObject* args);
+
+static PyObject*
 waifu2x_py_init_set(PyObject* self, PyObject* args, PyObject* kwargs);
 
 static PyObject*
 waifu2x_py_set_webp_quality(PyObject* self, PyObject* args);
+
+static PyObject*
+waifu2x_py_set_realcugan_syncgap(PyObject* self, PyObject* args);
 
 static PyObject*
 waifu2x_py_clear (PyObject* self, PyObject* args);
@@ -54,15 +60,17 @@ static PyObject*
 waifu2x_py_get_info(PyObject* self, PyObject* args);
 
 PyMODINIT_FUNC
-PyInit_waifu2x_vulkan(void);
+PyInit_sr_ncnn_vulkan(void);
 
 static PyMethodDef SpamMethods[] = {
     {"init",  waifu2x_py_init, METH_VARARGS,
      "Init ncnn\n"},
     {"initSet",  (PyCFunction)waifu2x_py_init_set, METH_VARARGS | METH_KEYWORDS,
      "Init setting\ngpuId: getGpuInfo get index \ncpuNum(Option): CPU model use CPU num, default cpu num / 2 \n"},
-    {"setWebpQuality",  (PyCFunction)waifu2x_py_set_webp_quality, METH_VARARGS,
+    {"setWebpQuality",  (PyCFunction)waifu2x_py_set_webp_quality, METH_VARARGS,\
      "set webp quality \ncan go from 0 (smaller output, lower quality) to 100 (best quality,larger output) \n"},
+    {"setRealcuganSyncgap",  (PyCFunction)waifu2x_py_set_realcugan_syncgap, METH_VARARGS,\
+     "set realcugan syncgap \ncan go from 1 (slot) to 3 (fast) \n"},
     {"add",  (PyCFunction)waifu2x_py_add, METH_VARARGS | METH_KEYWORDS,
      "Add task, \ndata: img bytes \nmodelIndex: Model enum \nbackId: call back id \nformat(Option): export fmt, default import fmt \nimport support bmp png jpg gif webp \nexport support bmp png jpg webp \nwidth(Option): export set width \nhigh(Option): export set high \nscale(Option): export set width and high \ntileSize(Option): default Auto\n"},
     {"getGpuInfo",  (PyCFunction)waifu2x_py_get_info, METH_VARARGS,
@@ -89,12 +97,14 @@ static PyMethodDef SpamMethods[] = {
      "Set debug log\n True or False\n"},
      {"setDefaultPath",  waifu2x_py_set_path, METH_VARARGS,
      "Set model default path\n"},
+    {"getModelName",  waifu2x_py_get_model_name, METH_VARARGS,
+     "get model name by index\n"},
     {NULL, NULL, 0, NULL}        /* Sentinel */
 };
 
 static struct PyModuleDef spammodule = {
     PyModuleDef_HEAD_INIT,
-    "waifu2x_vulkan",   /* name of module */
+    "sr_ncnn_vulkan",   /* name of module */
     "doc", /* module documentation, may be NULL */
     -1,       /* size of per-interpreter state of the module,
                  or -1 if the module keeps state in global variables. */
@@ -103,5 +113,5 @@ static struct PyModuleDef spammodule = {
 
 static bool IsInit = false;
 static bool IsInitSet = false;
-static const char* Version = "1.1.6";
+static const char* Version = "1.3.0";
 #endif 
