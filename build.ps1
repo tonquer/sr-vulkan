@@ -49,7 +49,7 @@ echo $Env:PYTHON_BIN
 echo $V
 echo $PYTHON_INCLUDE_DIRS
 echo $PYTHON_LIBRARIES
-mkdir -Force build; Set-Location .\build\
+mkdir -Force build_win; Set-Location .\build_win\
 cmake `
       -DVulkan_LIBRARY="..\VulkanSDK\windows\vulkan-1.lib" `
       -DVulkan_INCLUDE_DIR="..\VulkanSDK\Include" `
@@ -58,22 +58,22 @@ cmake `
       -DNCNN_VULKAN=ON `
       -DNCNN_BUILD_TOOLS=OFF `
       -DNCNN_BUILD_EXAMPLES=OFF `
-      -DPYTHON_LIBRARIES="$PYTHON_LIBRARIES" `
-      -DPYTHON_INCLUDE_DIRS="$PYTHON_INCLUDE_DIRS" `
+      -DUSE_FIND_PYTHON=OFF `
+      -DPython3_INCLUDE_DIRS="$PYTHON_INCLUDE_DIRS" `
+      -DPYTHON_LIBRARY="$PYTHON_LIBRARIES" `
+      -DCMAKE_VERBOSE_MAKEFILE=ON `
       ..\src
 cmake --build . --config Release
 Set-Location .\Release\
 
-$filePath = "sr-ncnn-vulkan.dll"
+$filePath = "sr-ncnn-vulkan.pyd"
 if (Test-Path -Path $filePath) {
-    Copy-Item -Force sr-ncnn-vulkan.dll sr_ncnn_vulkan.pyd
-
     # Package
     Set-Location $oldPath
     mkdir -Force "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Path "README.md" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Path "LICENSE" -Destination "$($PACKAGENAME)"
-    Copy-Item -Force -Verbose -Path "build\Release\sr_ncnn_vulkan.pyd" -Destination "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Path "build_win\Release\sr_ncnn_vulkan.pyd" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Recurse -Path "sr_ncnn_vulkan\models" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Recurse -Path "test" -Destination "$($PACKAGENAME)"
 } else {

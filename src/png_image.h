@@ -164,8 +164,9 @@ bool load_png(Task& v)
     memcpy(inimage->data, pixeldata, w * h * c);
     v.inImage.push_back(inimage);
     v.inFrame.push_back(100);
-    v.load_format = "png";
     if (pixeldata) stbi_image_free(pixeldata);
+    if (v.save_format.length() == 0) v.save_format = "png";
+    v.load_format = "png";
     return true;
 }
 

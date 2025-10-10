@@ -15,22 +15,22 @@ oldPath=`pwd`
 mkdir -p build && cd build
 
 # Python x86_64
-if [ ! -n "$PYTHON_BIN" ]; then
-      PYTHON_BIN=`which python3`
-fi
-PYTHON_DIR=`dirname $PYTHON_BIN`/../
+# if [ ! -n "$PYTHON_BIN" ]; then
+#       PYTHON_BIN=`which python3`
+# fi
+# PYTHON_DIR=`dirname $PYTHON_BIN`/../
 
-VERSION=`${PYTHON_BIN} -V 2>&1 | cut -d " " -f 2`
-VERSION_INFO=${VERSION:0:3}
+# VERSION=`${PYTHON_BIN} -V 2>&1 | cut -d " " -f 2`
+# VERSION_INFO=${VERSION:0:3}
 
-PYTHON_LIBRARIES=`find $PYTHON_DIR -name "libpython${VERSION_INFO}*.a"|tail -1`
-PYTHON_INCLUDE=`find $PYTHON_DIR -name "Python.h"|tail -1`
-PYTHON_INCLUDE_DIRS=`dirname $PYTHON_INCLUDE`
+# PYTHON_LIBRARIES=`find $PYTHON_DIR -name "libpython${VERSION_INFO}*.a"|tail -1`
+# PYTHON_INCLUDE=`find $PYTHON_DIR -name "Python.h"|tail -1`
+# PYTHON_INCLUDE_DIRS=`dirname $PYTHON_INCLUDE`
 
-echo $VERSION
-echo $PYTHON_BIN
-echo $PYTHON_LIBRARIES
-echo $PYTHON_INCLUDE_DIRS
+# echo $VERSION
+# echo $PYTHON_BIN
+# echo $PYTHON_LIBRARIES
+# echo $PYTHON_INCLUDE_DIRS
 
 cmake -DCMAKE_BUILD_TYPE=Release \
       -DVulkan_LIBRARY="$oldPath/VulkanSDK/linux/libvulkan.so" \
@@ -39,7 +39,7 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DNCNN_VULKAN=ON \
       -DNCNN_BUILD_TOOLS=OFF \
       -DNCNN_BUILD_EXAMPLES=OFF \
-      -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
+      # -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
       ../src
 cmake --build .
 # cp libsr_ncnn_vulkan.so sr_ncnn_vulkan.so

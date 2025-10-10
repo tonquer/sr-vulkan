@@ -51,8 +51,11 @@ int Waifu2x::load(const std::string& parampath, const std::string& modelpath)
     net.opt.use_fp16_storage = true;
     net.opt.use_fp16_arithmetic = false;
     net.opt.use_int8_storage = true;
-
-    net.set_vulkan_device(vkdev);
+    net.opt.use_sgemm_convolution = false;
+    if (vkdev)
+    {
+        net.set_vulkan_device(vkdev);
+    }
 
 #if _WIN32
     {

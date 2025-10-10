@@ -56,7 +56,8 @@ if(NOT USE_SYSTEM_JPEG)
             -DENABLE_SHARED=OFF
             -DENABLE_STATIC=ON
             -DWITH_TURBOJPEG=OFF
-            -DCMAKE_POSITION_INDEPENDENT_CODED=ON
+            -DCMAKE_CXX_FLAGS="-fPIC"
+            -DCMAKE_C_FLAGS="-fPIC"
         BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
     )
@@ -100,7 +101,8 @@ if(NOT USE_SYSTEM_ZLIB)
             -DWITH_REDUCED_MEM=OFF
             -DWITH_NEW_STRATEGIES=ON
             -DWITH_RUNTIME_CPU_DETECTION=ON
-            -DCMAKE_POSITION_INDEPENDENT_CODED=ON
+            -DCMAKE_CXX_FLAGS="-fPIC"
+            -DCMAKE_C_FLAGS="-fPIC"
         BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
     )
@@ -138,7 +140,8 @@ if(NOT USE_SYSTEM_PNG)
                 -DPNG_TESTS=OFF
                 -DPNG_TOOLS=OFF
                 -DPNG_HARDWARE_OPTIMIZATIONS=ON
-                -DCMAKE_POSITION_INDEPENDENT_CODED=ON
+                -DCMAKE_CXX_FLAGS="-fPIC"
+                -DCMAKE_C_FLAGS="-fPIC"
             BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
             INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
         )
@@ -158,7 +161,8 @@ if(NOT USE_SYSTEM_PNG)
                 -DPNG_HARDWARE_OPTIMIZATIONS=ON
                 -DZLIB_ROOT=<INSTALL_DIR>
                 -DZLIB_USE_STATIC_LIBS=TRUE
-                -DCMAKE_POSITION_INDEPENDENT_CODED=ON
+                -DCMAKE_CXX_FLAGS="-fPIC"
+                -DCMAKE_C_FLAGS="-fPIC"
             BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
             INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
         )
@@ -207,7 +211,8 @@ if(NOT USE_SYSTEM_WEBP)
             -DWEBP_BUILD_WEBP_JS=OFF
             -DWEBP_NEAR_LOSSLESS=OFF
             -DWEBP_ENABLE_SWAP_16BIT_CSP=OFF
-            -DCMAKE_POSITION_INDEPENDENT_CODED=ON
+            -DCMAKE_CXX_FLAGS="-fPIC"
+            -DCMAKE_C_FLAGS="-fPIC"
         BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
     )

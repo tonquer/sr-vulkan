@@ -47,22 +47,22 @@ cp $OPENMP_INCLUDE/* $VULKAN_SDK/../MoltenVK/include
 
 # Python x86_64
 # PYTHON_BIN=/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3
-if [ ! -n "$PYTHON_BIN" ]; then
-      PYTHON_BIN=`which python3`
-fi
-PYTHON_DIR=`dirname $PYTHON_BIN`/../
+# if [ ! -n "$PYTHON_BIN" ]; then
+#       PYTHON_BIN=`which python3`
+# fi
+# PYTHON_DIR=`dirname $PYTHON_BIN`/../
 
-VERSION=`${PYTHON_BIN} -V 2>&1 | cut -d " " -f 2`
-VERSION_INFO=${VERSION:0:3}
+# VERSION=`${PYTHON_BIN} -V 2>&1 | cut -d " " -f 2`
+# VERSION_INFO=${VERSION:0:3}
 
-#PYTHON_LIBRARIES=`find $PYTHON_DIR -name "libpython${VERSION_INFO}*.dylib"|tail -1`
-PYTHON_INCLUDE=`find $PYTHON_DIR -name "Python.h"|tail -1`
-PYTHON_INCLUDE_DIRS=`dirname $PYTHON_INCLUDE`
+# #PYTHON_LIBRARIES=`find $PYTHON_DIR -name "libpython${VERSION_INFO}*.dylib"|tail -1`
+# PYTHON_INCLUDE=`find $PYTHON_DIR -name "Python.h"|tail -1`
+# PYTHON_INCLUDE_DIRS=`dirname $PYTHON_INCLUDE`
 
-echo $VERSION
-echo $PYTHON_BIN
-# echo $PYTHON_LIBRARIES
-echo $PYTHON_INCLUDE_DIRS
+# echo $VERSION
+# echo $PYTHON_BIN
+# # echo $PYTHON_LIBRARIES
+# echo $PYTHON_INCLUDE_DIRS
 
 # build x86
 mkdir -p build && cd build
@@ -71,7 +71,7 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DNCNN_BUILD_TOOLS=OFF \
       -DNCNN_BUILD_EXAMPLES=OFF \
       -DUSE_STATIC_MOLTENVK=ON \
-      -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
+      # -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
       -DCMAKE_OSX_ARCHITECTURES="x86_64" \
       -DOpenMP_C_FLAGS="-Xclang -fopenmp" \
       -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
@@ -95,7 +95,7 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DNCNN_BUILD_TOOLS=OFF \
       -DNCNN_BUILD_EXAMPLES=OFF \
       -DUSE_STATIC_MOLTENVK=ON \
-      -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
+      # -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
       -DCMAKE_OSX_ARCHITECTURES="arm64" \
       -DOpenMP_C_FLAGS="-Xclang -fopenmp" \
       -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \

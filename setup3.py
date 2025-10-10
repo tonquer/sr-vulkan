@@ -128,8 +128,8 @@ class BuildExt(build_ext):
                 
         config = "Debug" if self.debug else "Release"
         cmake_args = [
-            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir.parent.absolute()),
-            "-DCMAKE_BUILD_TYPE=" + config
+            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir.parent.absolute()) + "/sr_ncnn_vulkan/",
+            "-DCMAKE_BUILD_TYPE=" + config,
         ]
         if Plat == "darwin":
             cmake_args += [

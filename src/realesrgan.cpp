@@ -51,6 +51,7 @@ RealESRGAN::RealESRGAN(int gpuid, bool _tta_mode, int num_threads, const char* n
     net.opt.use_fp16_arithmetic = false;
     net.opt.use_int8_storage = true;
     net.opt.use_int8_arithmetic = false;
+    net.opt.use_sgemm_convolution = false;
 
     net.set_vulkan_device(gpuid);
 

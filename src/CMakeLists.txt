@@ -10,11 +10,19 @@ set(CMAKE_CXX_STANDARD 11)
 option(USE_SYSTEM_NCNN "build with system libncnn" OFF)
 option(USE_SYSTEM_WEBP "build with system libwebp" OFF)
 option(USE_STATIC_MOLTENVK "link moltenvk static library" OFF)
+option(USE_FIND_PYTHON "Documentation for USE_FIND_PYTHON" ON)
 # set(CMAKE_EXE_LINKER_FLAGS /NODEFAULTLIB:"LIBCMT.lib")
-# set(Python3_USE_STATIC_LIBS FALSE)
-# find_package(Python3 COMPONENTS Interpreter Development)
 
-set(CMAKE_THREAD_LIBS_INIT "-lpthread")
+if(USE_FIND_PYTHON)
+    find_package(Python3 COMPONENTS Interpreter Development)
+    set(Python3_USE_STATIC_LIBS FALSE)
+endif()
+
+if(NOT WIN32)
+    set(CMAKE_THREAD_LIBS_INIT "-lpthread")
+endif()
+
+
 set(CMAKE_HAVE_THREADS_LIBRARY 1)
 set(CMAKE_USE_WIN32_THREADS_INIT 0)
 set(CMAKE_USE_PTHREADS_INIT 1)
@@ -54,10 +62,14 @@ add_dependencies(sr-ncnn-vulkan generate-spirv)
 include(${CMAKE_CURRENT_SOURCE_DIR}/deps_ncnn.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/deps_codec.cmake)
 
-target_include_directories(sr-ncnn-vulkan PRIVATE ${PYTHON_INCLUDE_DIRS})
-message("include " ${PYTHON_INCLUDE_DIRS})
+target_include_directories(sr-ncnn-vulkan PRIVATE ${Python3_INCLUDE_DIRS})
+message("include " ${Python3_INCLUDE_DIRS})
 
-set(WAIFU2X_LINK_LIBRARIES ncnn ${DEPS_CODEC_LIBRARIES} ${Vulkan_LIBRARY})
+if(WIN32)
+    target_link_directories(sr-ncnn-vulkan PRIVATE ${Python3_LIBRARY_DIRS})
+endif()
+
+set(WAIFU2X_LINK_LIBRARIES ncnn ${DEPS_CODEC_LIBRARIES} ${Vulkan_LIBRARY} ${PYTHON_LIBRARY})
 
 if(USE_STATIC_MOLTENVK)
     find_library(CoreFoundation NAMES CoreFoundation)
@@ -81,6 +93,9 @@ if(USE_STATIC_MOLTENVK)
     )
 endif()
 
+if(WIN32)
+    set_target_properties(sr-ncnn-vulkan PROPERTIES SUFFIX ".pyd")
+endif()
 
 target_link_libraries(sr-ncnn-vulkan ${WAIFU2X_LINK_LIBRARIES})
 set_target_properties(sr-ncnn-vulkan PROPERTIES OUTPUT_NAME "sr_ncnn_vulkan" PREFIX "")

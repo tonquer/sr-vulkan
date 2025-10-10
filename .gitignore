@@ -1,4 +1,5 @@
 build/
+build_win/
 dist/
 waifu2x_vulkan.egg-info/
 .vs/
@@ -7,3 +8,4 @@ venv
 test/1.jpg
 test/2.png
 .vscode/settings.json
+sr_ncnn_vulkan.egg-info/
