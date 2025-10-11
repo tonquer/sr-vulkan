@@ -66,7 +66,7 @@ cmake `
 cmake --build . --config Release
 Set-Location .\Release\
 
-$filePath = "sr-ncnn-vulkan.pyd"
+$filePath = "sr_ncnn_vulkan.pyd"
 if (Test-Path -Path $filePath) {
     # Package
     Set-Location $oldPath
@@ -77,6 +77,6 @@ if (Test-Path -Path $filePath) {
     Copy-Item -Force -Verbose -Recurse -Path "sr_ncnn_vulkan\models" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Recurse -Path "test" -Destination "$($PACKAGENAME)"
 } else {
-    Write-Host "sr_ncnn_vulkan.dll not found"
+    Write-Host "sr_ncnn_vulkan.pyd not found"
 }
 
