@@ -20,7 +20,8 @@ static int RealcuganSyncgap = 1;
 
 bool IsDebug = false;
 
-Waifu2xChar ModelPath[1024] = {0};
+Waifu2xChar GlobalModelPath[1024] = {0};
+Waifu2xChar DefaultModelPath[1024] = {0};
 
 int get_max_size()
 {
@@ -108,7 +109,7 @@ void* waifu2x_encode(void* args)
         double encodeTick = (v.encodeTick.time + v.encodeTick.millitm / 1000.0) - (v.procTick.time + v.procTick.millitm / 1000.0);
         double allTick = (v.encodeTick.time + v.encodeTick.millitm / 1000.0) - (v.startTick.time + v.startTick.millitm / 10000.0);
         v.allTick = allTick;
-        waifu2x_printf(stdout, "[SR_NCNN] end encode imageId :%d, decode:%.2fs, proc:%.2fs, encode:%.2fs, \n",
+        waifu2x_printf(stdout, "[SR_VULKAN] end encode imageId :%d, decode:%.2fs, proc:%.2fs, encode:%.2fs, \n",
             v.callBack, decodeTick, procTick, encodeTick);
 
         if (isSuc)
@@ -137,7 +138,7 @@ void* waifu2x_process_data(Task &v, const SuperResolution* waifu2x)
     else
         name = "cpu";
 
-    waifu2x_printf(stdout, "[SR_NCNN] start encode imageId :%d, gpu:%s, format:%s, model:%s, noise:%d, scale:%d, to_scale:%.2f, tta:%d, tileSize:%d, to_tile:%d\n",
+    waifu2x_printf(stdout, "[SR_VULKAN] start encode imageId :%d, gpu:%s, format:%s, model:%s, noise:%d, scale:%d, to_scale:%.2f, tta:%d, tileSize:%d, to_tile:%d\n",
         v.callBack, name, v.save_format.c_str(), waifu2x->mode_name.c_str(), waifu2x->noise, waifu2x->scale, v.scale, waifu2x->tta_mode, waifu2x->tilesize, v.tileSize);
 
     int scale_run_count = 1;
@@ -181,7 +182,7 @@ void* waifu2x_process_data(Task &v, const SuperResolution* waifu2x)
         {
             if (i == scale_run_count - 1)
             {
-                waifu2x_printf(stdout, "[SR_NCNN] start encode imageId :%d, count:%d, frame:%d, h:%d->%d, w:%d->%d \n",
+                waifu2x_printf(stdout, "[SR_VULKAN] start encode imageId :%d, count:%d, frame:%d, h:%d->%d, w:%d->%d \n",
                     v.callBack, i + 1, frame, inimage.h, outimage->h, inimage.w, outimage->w);
                 waifu2x->process(inimage, *outimage, v.tileSize);
                 inimage.release();
@@ -189,7 +190,7 @@ void* waifu2x_process_data(Task &v, const SuperResolution* waifu2x)
             else
             {
                 ncnn::Mat tmpimage(inimage.w * waifu2x->scale, inimage.h * waifu2x->scale, (size_t)inimage.elemsize, (int)inimage.elemsize);
-                waifu2x_printf(stdout, "[SR_NCNN] start encode imageId :%d, count:%d, frame:%d, h:%d->%d, w:%d->%d \n",
+                waifu2x_printf(stdout, "[SR_VULKAN] start encode imageId :%d, count:%d, frame:%d, h:%d->%d, w:%d->%d \n",
                     v.callBack, i + 1, frame, inimage.h, tmpimage.h, inimage.w, tmpimage.w);
                 waifu2x->process(inimage, tmpimage, v.tileSize);
                 inimage.release();
@@ -260,15 +261,29 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
 
     Waifu2xChar parampath[1024];
     Waifu2xChar modelpath[1024];
+    if (waifu2x_get_path_size() == 0)
+    {
 #if _WIN32
-    // Waifu2xList.push_back(NULL);
-    swprintf(parampath, L"%s/models/waifu2x/%s.param", ModelPath, name);
-    swprintf(modelpath, L"%s/models/waifu2x/%s.bin", ModelPath, name);
+        // Waifu2xList.push_back(NULL);
+        swprintf(parampath, L"%s/../sr_vulan_model_waifu2x/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, L"%s/../sr_vulan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
 #else
-    // Waifu2xList.push_back(NULL);
-    sprintf(parampath, "%s/models/waifu2x/%s.param", ModelPath, name);
-    sprintf(modelpath, "%s/models/waifu2x/%s.bin", ModelPath, name);
+        // Waifu2xList.push_back(NULL);
+        sprintf(parampath, "%s/../sr_vulan_model_waifu2x/models/%s.param", DefaultModelPath, name);
+        sprintf(modelpath, "%s/../sr_vulan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
 #endif
+    } else {
+#if _WIN32
+        // Waifu2xList.push_back(NULL);
+        swprintf(parampath, L"%s/waifu2x/%s.param", GlobalModelPath, name);
+        swprintf(modelpath, L"%s/waifu2x/%s.bin", GlobalModelPath, name);
+#else
+        // Waifu2xList.push_back(NULL);
+        sprintf(parampath, "%s/waifu2x/%s.param", GlobalModelPath, name);
+        sprintf(modelpath, "%s/waifu2x/%s.bin", GlobalModelPath, name);
+#endif
+    }
+
 
     int prepadding = 18;
     int tilesize = 0;
@@ -342,12 +357,14 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     struct _stat buffer;
     if (_wstat((wchar_t *)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_waifu2x\n");
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t *)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_waifu2x\n");
         return Waifu2xError::NotModel;
     }
 #else
@@ -355,12 +372,14 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     struct stat buffer;
     if (stat((char *)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_VULKAN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_waifu2x\n");
         return Waifu2xError::NotModel;
     }
     if (stat((char *)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_VULKAN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_waifu2x\n");
         return Waifu2xError::NotModel;
     }
 #endif
@@ -401,15 +420,28 @@ int realcugan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mo
 {
     Waifu2xChar parampath[1024];
     Waifu2xChar modelpath[1024];
+    if (waifu2x_get_path_size() == 0)
+    {
 #if _WIN32
-    // Waifu2xList.push_back(NULL);
-    swprintf(parampath, L"%s/models/realcugan/%s.param", ModelPath, name);
-    swprintf(modelpath, L"%s/models/realcugan/%s.bin", ModelPath, name);
+        // Waifu2xList.push_back(NULL);
+        swprintf(parampath, L"%s/../sr_vulan_model_realcugan/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, L"%s/../sr_vulan_model_realcugan/models/%s.bin", DefaultModelPath, name);
 #else
-    // Waifu2xList.push_back(NULL);
-    sprintf(parampath, "%s/models/realcugan/%s.param", ModelPath, name);
-    sprintf(modelpath, "%s/models/realcugan/%s.bin", ModelPath, name);
+        // Waifu2xList.push_back(NULL);
+        sprintf(parampath, "%s/../sr_vulan_model_realcugan/models/%s.param", DefaultModelPath, name);
+        sprintf(modelpath, "%s/../sr_vulan_model_realcugan/models/%s.bin", DefaultModelPath, name);
 #endif
+    } else {
+#if _WIN32
+        // Waifu2xList.push_back(NULL);
+        swprintf(parampath, L"%s/realcugan/%s.param", GlobalModelPath, name);
+        swprintf(modelpath, L"%s/realcugan/%s.bin", GlobalModelPath, name);
+#else
+        // Waifu2xList.push_back(NULL);
+        sprintf(parampath, "%s/realcugan/%s.param", GlobalModelPath, name);
+        sprintf(modelpath, "%s/realcugan/%s.bin", GlobalModelPath, name);
+#endif
+    }
     int prepadding = 18;
     int tilesize = 400;
     uint32_t heap_budget;
@@ -421,12 +453,14 @@ int realcugan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mo
     struct _stat buffer;
     if (_wstat((wchar_t*)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realcugan\n");
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t*)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realcugan\n");
         return Waifu2xError::NotModel;
     }
 #else
@@ -434,12 +468,14 @@ int realcugan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mo
     struct stat buffer;
     if (stat((char*)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_VULKAN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realcugan\n");
         return Waifu2xError::NotModel;
     }
     if (stat((char*)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_VULKAN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realcugan\n");
         return Waifu2xError::NotModel;
     }
 #endif
@@ -525,14 +561,28 @@ int realsr_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode,
 
     Waifu2xChar parampath[1024];
     Waifu2xChar modelpath[1024];
+   if (waifu2x_get_path_size() == 0)
+    {
 #if _WIN32
-    // Waifu2xList.push_back(NULL);
-    swprintf(parampath, L"%s/models/realsr/%s.param", ModelPath, name);
-    swprintf(modelpath, L"%s/models/realsr/%s.bin", ModelPath, name);
+        // Waifu2xList.push_back(NULL);
+        swprintf(parampath, L"%s/../sr_vulan_model_realsr/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, L"%s/../sr_vulan_model_realsr/models/%s.bin", DefaultModelPath, name);
 #else
-    sprintf(parampath, "%s/models/realsr/%s.param", ModelPath, name);
-    sprintf(modelpath, "%s/models/realsr/%s.bin", ModelPath, name);
+        // Waifu2xList.push_back(NULL);
+        sprintf(parampath, "%s/../sr_vulan_model_realsr/models/%s.param", DefaultModelPath, name);
+        sprintf(modelpath, "%s/../sr_vulan_model_realsr/models/%s.bin", DefaultModelPath, name);
 #endif
+    } else {
+#if _WIN32
+        // Waifu2xList.push_back(NULL);
+        swprintf(parampath, L"%s/realsr/%s.param", GlobalModelPath, name);
+        swprintf(modelpath, L"%s/realsr/%s.bin", GlobalModelPath, name);
+#else
+        // Waifu2xList.push_back(NULL);
+        sprintf(parampath, "%s/realsr/%s.param", GlobalModelPath, name);
+        sprintf(modelpath, "%s/realsr/%s.bin", GlobalModelPath, name);
+#endif
+    }
 
     int prepadding = 10;
     int tilesize = 200;
@@ -545,12 +595,14 @@ int realsr_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode,
     struct _stat buffer;
     if (_wstat((wchar_t*)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realsr\n");
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t*)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realsr\n");
         return Waifu2xError::NotModel;
     }
 #else
@@ -558,12 +610,14 @@ int realsr_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode,
     struct stat buffer;
     if (stat((char*)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_VULKAN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realsr\n");
         return Waifu2xError::NotModel;
     }
     if (stat((char*)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_VULKAN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realsr\n");
         return Waifu2xError::NotModel;
     }
 #endif
@@ -616,14 +670,28 @@ int realesrgan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_m
 
     Waifu2xChar parampath[1024];
     Waifu2xChar modelpath[1024];
+   if (waifu2x_get_path_size() == 0)
+    {
 #if _WIN32
-    // Waifu2xList.push_back(NULL);
-    swprintf(parampath, L"%s/models/realesrgan/%s.param", ModelPath, name);
-    swprintf(modelpath, L"%s/models/realesrgan/%s.bin", ModelPath, name);
+        // Waifu2xList.push_back(NULL);
+        swprintf(parampath, L"%s/../sr_vulan_model_realesrgan/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, L"%s/../sr_vulan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
 #else
-    sprintf(parampath, "%s/models/realesrgan/%s.param", ModelPath, name);
-    sprintf(modelpath, "%s/models/realesrgan/%s.bin", ModelPath, name);
+        // Waifu2xList.push_back(NULL);
+        sprintf(parampath, "%s/../sr_vulan_model_realesrgan/models/%s.param", DefaultModelPath, name);
+        sprintf(modelpath, "%s/../sr_vulan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
 #endif
+    } else {
+#if _WIN32
+        // Waifu2xList.push_back(NULL);
+        swprintf(parampath, L"%s/realesrgan/%s.param", GlobalModelPath, name);
+        swprintf(modelpath, L"%s/realesrgan/%s.bin", GlobalModelPath, name);
+#else
+        // Waifu2xList.push_back(NULL);
+        sprintf(parampath, "%s/realesrgan/%s.param", GlobalModelPath, name);
+        sprintf(modelpath, "%s/realesrgan/%s.bin", GlobalModelPath, name);
+#endif
+    }
 
     int prepadding = 10;
     int tilesize = 200;
@@ -636,12 +704,14 @@ int realesrgan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_m
     struct _stat buffer;
     if (_wstat((wchar_t*)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realesrgan\n");
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t*)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, L"[SR_NCNN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realesrgan\n");
         return Waifu2xError::NotModel;
     }
 #else
@@ -649,12 +719,14 @@ int realesrgan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_m
     struct stat buffer;
     if (stat((char*)parampath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_VULKAN] not found path %s\n", parampath);
+        waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realesrgan\n");
         return Waifu2xError::NotModel;
     }
     if (stat((char*)modelpath, &buffer) != 0)
     {
-        waifu2x_printf(stderr, "[SR_NCNN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_VULKAN] not found path %s\n", modelpath);
+        waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realesrgan\n");
         return Waifu2xError::NotModel;
     }
 #endif
@@ -714,10 +786,28 @@ int waifu2x_init()
 int waifu2x_get_path_size()
 {
 #if _WIN32
-    return wcslen(ModelPath);
+    return wcslen(GlobalModelPath);
 #else
-    return strlen(ModelPath);
+    return strlen(GlobalModelPath);
 #endif
+}
+
+int waifu2x_init_default_path(const Waifu2xChar* modelPath2)
+{
+#if _WIN32
+    if (modelPath2)
+    {
+        memset(DefaultModelPath, 0, 1024);
+        wcscpy(DefaultModelPath, modelPath2);
+    };
+#else
+    if (modelPath2)
+    {
+        memset(DefaultModelPath, 0, 1024);
+        strcpy(DefaultModelPath, modelPath2);
+    };
+#endif
+    return 0;
 }
 
 int waifu2x_init_path(const Waifu2xChar* modelPath2)
@@ -725,14 +815,14 @@ int waifu2x_init_path(const Waifu2xChar* modelPath2)
 #if _WIN32
     if (modelPath2)
     {
-        memset(ModelPath, 0, 1024);
-        wcscpy(ModelPath, modelPath2);
+        memset(GlobalModelPath, 0, 1024);
+        wcscpy(GlobalModelPath, modelPath2);
     };
 #else
     if (modelPath2)
     {
-        memset(ModelPath, 0, 1024);
-        strcpy(ModelPath, modelPath2);
+        memset(GlobalModelPath, 0, 1024);
+        strcpy(GlobalModelPath, modelPath2);
     };
 #endif
     return 0;
@@ -816,7 +906,7 @@ int waifu2x_init_set(int gpuId2, int cpuNum)
 #endif
     }
     int modelLen = sizeof(AllModel) / sizeof(AllModel[0]);
-    waifu2x_printf(stdout, "[SR_NCNN] init model num:%d, waifu2x:%d, realcugan:%d, realsr:%d, realesrgan:%d\n", modelLen, Waifu2xList.size(), RealCuganList.size(), RealSrList.size(), RealEsrganList.size());
+    waifu2x_printf(stdout, "[SR_VULKAN] init model num:%d, waifu2x:%d, realcugan:%d, realsr:%d, realesrgan:%d\n", modelLen, Waifu2xList.size(), RealCuganList.size(), RealSrList.size(), RealEsrganList.size());
 
     // waifu2x proc
     ProcThreads.resize(TotalJobsProc);
@@ -922,18 +1012,18 @@ int waifu2x_check_init_model(int initModel)
             return 1;
         }
 #if _WIN32
-        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
+        waifu2x_printf(stdout, "[SR_VULKAN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
 #else
-        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", name.c_str(), modelIndex);
+        waifu2x_printf(stdout, "[SR_VULKAN] load model %s, index:%d\n", name.c_str(), modelIndex);
 #endif
         if (GpuId == -1)
         {
 #if _WIN32
-            waifu2x_printf(stderr, L"[SR_NCNN] RealESRGAN not support cpu model \n");
+            waifu2x_printf(stderr, L"[SR_VULKAN] RealESRGAN not support cpu model \n");
 #else
-            waifu2x_printf(stderr, "[SR_NCNN] RealESRGAN not support cpu model \n");
+            waifu2x_printf(stderr, "[SR_VULKAN] RealESRGAN not support cpu model \n");
 #endif
-            waifu2x_set_error("RealESRGAN not support cpu model");
+            waifu2x_set_error("[SR_VULKAN] RealESRGAN not support cpu model");
             return Waifu2xError::NotSupport;
         }
         return realesrgan_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel);
@@ -946,9 +1036,9 @@ int waifu2x_check_init_model(int initModel)
             return 1;
         }
 #if _WIN32
-        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
+        waifu2x_printf(stdout, "[SR_VULKAN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
 #else
-        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", name.c_str(), modelIndex);
+        waifu2x_printf(stdout, "[SR_VULKAN] load model %s, index:%d\n", name.c_str(), modelIndex);
 #endif
         return realsr_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel);
     }
@@ -960,9 +1050,9 @@ int waifu2x_check_init_model(int initModel)
             return 1;
         }
 #if _WIN32
-        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
+        waifu2x_printf(stdout, "[SR_VULKAN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
 #else
-        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", name.c_str(), modelIndex);
+        waifu2x_printf(stdout, "[SR_VULKAN] load model %s, index:%d\n", name.c_str(), modelIndex);
 #endif
         return realcugan_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel);
     }
@@ -972,9 +1062,9 @@ int waifu2x_check_init_model(int initModel)
             return 1;
         }
 #if _WIN32
-        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
+        waifu2x_printf(stdout, "[SR_VULKAN] load model %s, index:%d\n", oldName.c_str(), modelIndex);
 #else
-        waifu2x_printf(stdout, "[SR_NCNN] load model %s, index:%d\n", name.c_str(), modelIndex);
+        waifu2x_printf(stdout, "[SR_VULKAN] load model %s, index:%d\n", name.c_str(), modelIndex);
 #endif
         return waifu2x_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel);
     }

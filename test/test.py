@@ -15,7 +15,7 @@ if __name__ == "__main__":
         # cpu model
         isCpuModel = True
         
-    
+    sr.setModelPath("models")
     # 获得Gpu列表
     # get gpu list
     infos = sr.getGpuInfo()
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     # if llvm gpu, use cpu model
     if infos and len(infos) == 1 and "LLVM" in infos[0]:
         isCpuModel = True
-        
+
     cpuNum = sr.getCpuCoreNum()
     gpuNum = sr.getGpuCoreNum(0)
     print("init, code:{}, gpuList:{}, cpuNum:{}, gpuNum:{}".format(str(sts), infos, cpuNum, gpuNum))    
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     
     # 设置长宽缩放2.5倍
     # start convert, by setting scale
-    if sr.add(data, sr.MODEL_REALCUGAN_PRO_UP2X_DENOISE3X, backId, 2.5, tileSize=100) > 0:
+    if sr.add(data, sr.MODEL_REALCUGAN_PRO_UP2X_DENOISE3X, backId, 2.5, tileSize=100, format="webp") > 0:
         count += 1
     backId = 2
 
@@ -69,6 +69,9 @@ if __name__ == "__main__":
             break 
         count -= 1
         newData, foramt, backId, tick = info
+        if not newData:
+            print("error not found data")
+            continue
         f = open(str(backId) + "." + foramt, "wb+")
         f.write(newData)
         f.close()

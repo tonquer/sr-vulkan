@@ -1,8 +1,8 @@
 import os, sys
 current_path = os.path.abspath(__file__)
 os.chdir(os.path.dirname(current_path))
-from sr_ncnn_vulkan import sr_ncnn_vulkan as sr
-from sr_ncnn_vulkan import enum
+from sr_vulkan import sr_vulkan as sr
+from sr_vulkan import enum
 import time
 
 if __name__ == "__main__":
@@ -46,6 +46,7 @@ if __name__ == "__main__":
     f.close()
     backId = 1
     count = 0
+    costList = []
     for name in enum.AllModelNames:
         index = getattr(sr, name)
         sr.add(data, index, backId, 2.5)
@@ -55,4 +56,7 @@ if __name__ == "__main__":
             continue 
         newData, foramt, backId, tick = info
         print(name, tick)
+        costList.append((name, tick))
+    for k, v in sorted(costList, key=lambda a:a[1]):
+        print(f"model={k}, cost:{v}")
     exit(1)

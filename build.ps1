@@ -1,4 +1,4 @@
-$LIB_NAME='sr-ncnn-vulan'
+$LIB_NAME='sr-vulan'
 $TAG_NAME='v1.3.0'
 $PACKAGE_PREFIX=($LIB_NAME + '-' + $TAG_NAME)
 $PACKAGENAME=($PACKAGE_PREFIX + '-windows')
@@ -66,17 +66,17 @@ cmake `
 cmake --build . --config Release
 Set-Location .\Release\
 
-$filePath = "sr_ncnn_vulkan.pyd"
+$filePath = "sr_vulkan.pyd"
 if (Test-Path -Path $filePath) {
     # Package
     Set-Location $oldPath
     mkdir -Force "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Path "README.md" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Path "LICENSE" -Destination "$($PACKAGENAME)"
-    Copy-Item -Force -Verbose -Path "build_win\Release\sr_ncnn_vulkan.pyd" -Destination "$($PACKAGENAME)"
-    Copy-Item -Force -Verbose -Recurse -Path "sr_ncnn_vulkan\models" -Destination "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Path "build_win\Release\sr_vulkan.pyd" -Destination "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Recurse -Path "sr_vulkan\models" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Recurse -Path "test" -Destination "$($PACKAGENAME)"
 } else {
-    Write-Host "sr_ncnn_vulkan.pyd not found"
+    Write-Host "sr_vulkan.pyd not found"
 }
 

@@ -6,7 +6,7 @@ from distutils.core import Extension
 
 long_description = \
 """
-#sr-ncnn-vulkan-python
+#sr-vulkan
 - This is modified [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan), Export pyd and so files to Python
 - Support Linux, Windows, MacOs
 - Support import JPG, PNG, BMP, GIF, WEBP, Animated WEBP, APNG
@@ -15,12 +15,12 @@ long_description = \
 
 # Install
 ```shell
-pip install sr-ncnn-vulkan
+pip install sr-vulkan
 ```
 
 # Use
 ```shell
-from sr_ncnn_vulkan import sr_ncnn_vulkan as sr
+from sr_vulkan import sr_vulkan as sr
 
 # init
 sts = sr.init()
@@ -97,7 +97,7 @@ Plat = sys.platform
 print(Plat)
 
 setuptools.setup(
-    name="sr_ncnn_vulkan",
+    name="sr-vulkan",
     version=Version,
     author="tonquer",
     license="MIT",
@@ -117,11 +117,12 @@ setuptools.setup(
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
         "License :: OSI Approved :: MIT License",
     ],
     entry_points={
         "pyinstaller40": [
-            "hook-dirs = sr_ncnn_vulkan:get_hook_dirs"
+            "hook-dirs = sr_vulkan:get_hook_dirs"
         ]
     },
     python_requires = ">=3.6",

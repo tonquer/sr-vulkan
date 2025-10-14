@@ -1,7 +1,7 @@
 #include "waifu2x_py.h"
 
 PyMODINIT_FUNC
-PyInit_sr_ncnn_vulkan(void)
+PyInit_sr_vulkan(void)
 {
     PyObject* m;
 
@@ -16,7 +16,7 @@ PyInit_sr_ncnn_vulkan(void)
     for (int j = 0; j < len; j++)
     {
         std::string name = AllModel[j];
-;       sprintf(modelName, "MODEL_%s", name.c_str());
+        sprintf(modelName, "MODEL_%s", name.c_str());
         sprintf(modelNameTTa, "%s_TTA", modelName);
         PyModule_AddIntConstant(m, modelName, index++);
         PyModule_AddIntConstant(m, modelNameTTa, index++);
@@ -53,7 +53,7 @@ waifu2x_py_init_set(PyObject* self, PyObject* args, PyObject* kwargs)
     
     if (!noSetDefaultPath && waifu2x_get_path_size() <= 0)
     {
-        PyObject* pyModule = PyImport_ImportModule("sr_ncnn_vulkan");
+        PyObject* pyModule = PyImport_ImportModule("sr_vulkan");
         PyObject* v = PyObject_GetAttrString(pyModule, "__file__");
 
         PyObject* pathModule = PyImport_ImportModule("os.path");
@@ -71,7 +71,7 @@ waifu2x_py_init_set(PyObject* self, PyObject* args, PyObject* kwargs)
         const char* path = NULL;
         PyArg_Parse(rel, "s", &path);
 #endif
-        sts = waifu2x_init_path(path);
+        sts = waifu2x_init_default_path(path);
     }
     sts = waifu2x_init_set(gpuId, cpuNum);
     if (!sts) IsInitSet = true;
@@ -145,7 +145,7 @@ waifu2x_py_get_model_name(PyObject* self, PyObject* args)
     int len = sizeof(AllModel) / sizeof(AllModel[0]);
     char errMsg[512];
     if (modelIndex >= len) {
-        sprintf(errMsg, "[SR_NCNN] index error, index:%d, max_index:%d", modelIndex, len);
+        sprintf(errMsg, "[SR_VULKAN] index error, index:%d, max_index:%d", modelIndex, len);
         waifu2x_set_error(errMsg);
         Py_RETURN_NONE;
     }
@@ -173,7 +173,7 @@ waifu2x_py_set_path(PyObject* self, PyObject* args)
     }
     else
     {
-        PyObject* pyModule = PyImport_ImportModule("sr_ncnn_vulkan");
+        PyObject* pyModule = PyImport_ImportModule("sr_vulkan");
         PyObject* v = PyObject_GetAttrString(pyModule, "__file__");
 
         PyObject* pathModule = PyImport_ImportModule("os.path");

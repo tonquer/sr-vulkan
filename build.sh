@@ -1,4 +1,4 @@
-LIB_NAME=sr-ncnn-vulkan
+LIB_NAME=sr-vulkan
 TAG_NAME=v1.3.0
 PACKAGE_PREFIX=${LIB_NAME}-${TAG_NAME}}
 PACKAGENAME=${PACKAGE_PREFIX}-ubuntu
@@ -42,12 +42,12 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       # -DPYTHON_INCLUDE_DIRS=$PYTHON_INCLUDE_DIRS \
       ../src
 cmake --build .
-# cp libsr_ncnn_vulkan.so sr_ncnn_vulkan.so
-strip -x sr_ncnn_vulkan.so
+# cp libsr_vulkan.so sr_vulkan.so
+strip -x sr_vulkan.so
 
 # Package
 cd $oldPath
 mkdir -p $PACKAGENAME
 cp README.md LICENSE $PACKAGENAME
-cp build/sr_ncnn_vulkan.so $PACKAGENAME
-cp -r sr_ncnn_vulkan/models test $PACKAGENAME
+cp build/sr_vulkan.so $PACKAGENAME
+cp -r sr_vulkan/models test $PACKAGENAME

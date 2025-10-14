@@ -62,10 +62,10 @@ if(NOT USE_SYSTEM_JPEG)
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
     )
 
-    add_dependencies(sr-ncnn-vulkan deps-libjpeg-turbo)
+    add_dependencies(sr-vulkan deps-libjpeg-turbo)
 
-    target_include_directories(sr-ncnn-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
-    target_link_directories(sr-ncnn-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
+    target_include_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
+    target_link_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
     if(WIN32)
         set(JPEG_LIBRARIES jpeg-static)
     else()
@@ -101,16 +101,18 @@ if(NOT USE_SYSTEM_ZLIB)
             -DWITH_REDUCED_MEM=OFF
             -DWITH_NEW_STRATEGIES=ON
             -DWITH_RUNTIME_CPU_DETECTION=ON
+            -DCMAKE_POLICY_DEFAULT_CMP0091:STRING=NEW
+            -DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=MultiThreaded$<$<CONFIG:Debug>:Debug>
             -DCMAKE_CXX_FLAGS="-fPIC"
             -DCMAKE_C_FLAGS="-fPIC"
         BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
     )
 
-    add_dependencies(sr-ncnn-vulkan deps-zlib-ng)
+    add_dependencies(sr-vulkan deps-zlib-ng)
 
-    target_include_directories(sr-ncnn-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
-    target_link_directories(sr-ncnn-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
+    target_include_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
+    target_link_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
     if(WIN32)
         set(ZLIB_LIBRARIES zlibstatic)
     else()
@@ -170,10 +172,10 @@ if(NOT USE_SYSTEM_PNG)
         add_dependencies(deps-libpng deps-zlib-ng)
     endif()
 
-    add_dependencies(sr-ncnn-vulkan deps-libpng)
+    add_dependencies(sr-vulkan deps-libpng)
 
-    target_include_directories(sr-ncnn-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
-    target_link_directories(sr-ncnn-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
+    target_include_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
+    target_link_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
     if(WIN32)
         set(PNG_LIBRARIES libpng16_static)
     else()
@@ -211,16 +213,18 @@ if(NOT USE_SYSTEM_WEBP)
             -DWEBP_BUILD_WEBP_JS=OFF
             -DWEBP_NEAR_LOSSLESS=OFF
             -DWEBP_ENABLE_SWAP_16BIT_CSP=OFF
+            -DCMAKE_POLICY_DEFAULT_CMP0091:STRING=NEW
+            -DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=MultiThreaded$<$<CONFIG:Debug>:Debug>
             -DCMAKE_CXX_FLAGS="-fPIC"
             -DCMAKE_C_FLAGS="-fPIC"
         BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
     )
 
-    add_dependencies(sr-ncnn-vulkan deps-libwebp)
+    add_dependencies(sr-vulkan deps-libwebp)
 
-    target_include_directories(sr-ncnn-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
-    target_link_directories(sr-ncnn-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
+    target_include_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
+    target_link_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
     if(WIN32)
         set(WebP_LIBRARIES libwebp libwebpdecoder libwebpdemux libwebpmux libsharpyuv)
     else()

@@ -60,7 +60,7 @@ static PyObject*
 waifu2x_py_get_info(PyObject* self, PyObject* args);
 
 PyMODINIT_FUNC
-PyInit_sr_ncnn_vulkan(void);
+PyInit_sr_vulkan(void);
 
 static PyMethodDef SpamMethods[] = {
     {"init",  waifu2x_py_init, METH_VARARGS,
@@ -95,7 +95,7 @@ static PyMethodDef SpamMethods[] = {
      "Get version\nProject: https://github.com/tonquer/waifu2x-vulkan \n"},
     {"setDebug",  waifu2x_py_set_debug, METH_VARARGS,
      "Set debug log\n True or False\n"},
-     {"setDefaultPath",  waifu2x_py_set_path, METH_VARARGS,
+     {"setModelPath",  waifu2x_py_set_path, METH_VARARGS,
      "Set model default path\n"},
     {"getModelName",  waifu2x_py_get_model_name, METH_VARARGS,
      "get model name by index\n"},
@@ -104,7 +104,7 @@ static PyMethodDef SpamMethods[] = {
 
 static struct PyModuleDef spammodule = {
     PyModuleDef_HEAD_INIT,
-    "sr_ncnn_vulkan",   /* name of module */
+    "sr_vulkan",   /* name of module */
     "doc", /* module documentation, may be NULL */
     -1,       /* size of per-interpreter state of the module,
                  or -1 if the module keeps state in global variables. */
@@ -113,5 +113,5 @@ static struct PyModuleDef spammodule = {
 
 static bool IsInit = false;
 static bool IsInitSet = false;
-static const char* Version = "1.3.0";
+static const char* Version = "2.0.0";
 #endif 

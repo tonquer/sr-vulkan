@@ -9,3 +9,4 @@ test/1.jpg
 test/2.png
 .vscode/settings.json
 sr_ncnn_vulkan.egg-info/
+sr_vulkan.egg-info/
