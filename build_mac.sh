@@ -1,6 +1,6 @@
 # export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 LIB_NAME=sr-vulkan
-$TAG_NAME='v2.0.0'
+$TAG_NAME='v2.0.1'
 PACKAGE_PREFIX=${LIB_NAME}-${TAG_NAME}
 PACKAGENAME=${PACKAGE_PREFIX}-macos
 
