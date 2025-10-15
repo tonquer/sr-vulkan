@@ -1,6 +1,6 @@
 # export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 LIB_NAME=sr-vulkan
-$TAG_NAME='v2.0.1'
+TAG_NAME='v2.0.1'
 PACKAGE_PREFIX=${LIB_NAME}-${TAG_NAME}
 PACKAGENAME=${PACKAGE_PREFIX}-macos
 
@@ -86,7 +86,6 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       ../src
 
 cmake --build . -j4
-cp sr_vulkan.dylib sr_vulkan.so
 strip -x sr_vulkan.so
 cd ..
 
@@ -109,7 +108,6 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DVulkan_LIBRARY=$VULKAN_SDK/../MoltenVK/static/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a \
       ../src
 cmake --build . -j4
-cp sr_vulkan.dylib sr_vulkan.so
 strip -x sr_vulkan.so
 
 # Package
@@ -117,4 +115,4 @@ cd $oldPath
 mkdir -p $PACKAGENAME
 cp README.md LICENSE $PACKAGENAME
 lipo -create build/sr_vulkan.so build_arm64/sr_vulkan.so -o $PACKAGENAME/sr_vulkan.so
-cp -r sr_vulkan/models test $PACKAGENAME
+
