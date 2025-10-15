@@ -49,7 +49,9 @@ if __name__ == "__main__":
     costList = []
     for name in enum.AllModelNames:
         index = getattr(sr, name)
-        sr.add(data, index, backId, 2.5)
+        st = sr.add(data, index, backId, 2.5)
+        if st < 0:
+            continue
         info = sr.load(0)
         if not info:
             print("not found, {}".format(name))
@@ -59,4 +61,6 @@ if __name__ == "__main__":
         costList.append((name, tick))
     for k, v in sorted(costList, key=lambda a:a[1]):
         print(f"model={k}, cost:{v}")
+
+    sr.stop()
     exit(1)

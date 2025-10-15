@@ -1,7 +1,7 @@
 import os, sys
 current_path = os.path.abspath(__file__)
 os.chdir(os.path.dirname(current_path))
-from sr_ncnn_vulkan import sr_ncnn_vulkan as sr
+from sr_vulkan import sr_vulkan as sr
 import time
 
 if __name__ == "__main__":
@@ -14,8 +14,10 @@ if __name__ == "__main__":
     if sts < 0:
         # cpu model
         isCpuModel = True
-        
-    sr.setModelPath("models")
+    
+    # 设置自定义models路径，或者使用pip安装其他models    
+    # sr.setModelPath("models")
+    
     # 获得Gpu列表
     # get gpu list
     infos = sr.getGpuInfo()

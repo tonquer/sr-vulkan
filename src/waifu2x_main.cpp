@@ -265,12 +265,12 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     {
 #if _WIN32
         // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/../sr_vulan_model_waifu2x/models/%s.param", DefaultModelPath, name);
-        swprintf(modelpath, L"%s/../sr_vulan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
+        swprintf(parampath, L"%s/../sr_vulkan_model_waifu2x/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, L"%s/../sr_vulkan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
 #else
         // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/../sr_vulan_model_waifu2x/models/%s.param", DefaultModelPath, name);
-        sprintf(modelpath, "%s/../sr_vulan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
+        sprintf(parampath, "%s/../sr_vulkan_model_waifu2x/models/%s.param", DefaultModelPath, name);
+        sprintf(modelpath, "%s/../sr_vulkan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
 #endif
     } else {
 #if _WIN32
@@ -424,12 +424,12 @@ int realcugan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mo
     {
 #if _WIN32
         // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/../sr_vulan_model_realcugan/models/%s.param", DefaultModelPath, name);
-        swprintf(modelpath, L"%s/../sr_vulan_model_realcugan/models/%s.bin", DefaultModelPath, name);
+        swprintf(parampath, L"%s/../sr_vulkan_model_realcugan/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, L"%s/../sr_vulkan_model_realcugan/models/%s.bin", DefaultModelPath, name);
 #else
         // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/../sr_vulan_model_realcugan/models/%s.param", DefaultModelPath, name);
-        sprintf(modelpath, "%s/../sr_vulan_model_realcugan/models/%s.bin", DefaultModelPath, name);
+        sprintf(parampath, "%s/../sr_vulkan_model_realcugan/models/%s.param", DefaultModelPath, name);
+        sprintf(modelpath, "%s/../sr_vulkan_model_realcugan/models/%s.bin", DefaultModelPath, name);
 #endif
     } else {
 #if _WIN32
@@ -565,12 +565,12 @@ int realsr_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode,
     {
 #if _WIN32
         // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/../sr_vulan_model_realsr/models/%s.param", DefaultModelPath, name);
-        swprintf(modelpath, L"%s/../sr_vulan_model_realsr/models/%s.bin", DefaultModelPath, name);
+        swprintf(parampath, L"%s/../sr_vulkan_model_realsr/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, L"%s/../sr_vulkan_model_realsr/models/%s.bin", DefaultModelPath, name);
 #else
         // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/../sr_vulan_model_realsr/models/%s.param", DefaultModelPath, name);
-        sprintf(modelpath, "%s/../sr_vulan_model_realsr/models/%s.bin", DefaultModelPath, name);
+        sprintf(parampath, "%s/../sr_vulkan_model_realsr/models/%s.param", DefaultModelPath, name);
+        sprintf(modelpath, "%s/../sr_vulkan_model_realsr/models/%s.bin", DefaultModelPath, name);
 #endif
     } else {
 #if _WIN32
@@ -674,12 +674,12 @@ int realesrgan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_m
     {
 #if _WIN32
         // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/../sr_vulan_model_realesrgan/models/%s.param", DefaultModelPath, name);
-        swprintf(modelpath, L"%s/../sr_vulan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
+        swprintf(parampath, L"%s/../sr_vulkan_model_realesrgan/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, L"%s/../sr_vulkan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
 #else
         // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/../sr_vulan_model_realesrgan/models/%s.param", DefaultModelPath, name);
-        sprintf(modelpath, "%s/../sr_vulan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
+        sprintf(parampath, "%s/../sr_vulkan_model_realesrgan/models/%s.param", DefaultModelPath, name);
+        sprintf(modelpath, "%s/../sr_vulkan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
 #endif
     } else {
 #if _WIN32

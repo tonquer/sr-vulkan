@@ -13,7 +13,7 @@ IsMacosBuildUniversal2 = False
 long_description = \
 """
 # sr-vulkan
-- This is modified [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan), [realsr-ncnn-vulkan](https://github.com/nihui/realsr-ncnn-vulkan) [realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan), Export pyd and so files to Python
+- This is modified [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan), [realsr-ncnn-vulkan](https://github.com/nihui/realsr-ncnn-vulkan) [realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan) [xinntao/Real-ESRGAN-ncnn-vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/), Export pyd and so files to Python
 - Support Linux, Windows, MacOs
 - Support import JPG, PNG, BMP, GIF, WEBP, Animated WEBP, APNG
 - Support export JPG, PNG, BMP, WEBP, Animated WEBP, APNG
@@ -21,16 +21,20 @@ long_description = \
 
 # Install
 ```shell
-pip install sr-vulkan
-pip install sr-vulkan_model_waifu2x
-pip install sr-vulkan_model_realcugan
-pip install sr-vulkan_model_realsr
-pip install sr-vulkan_model_realesrgan
+pip install sr-vulkan -v
+```
+
+# Install Model
+```shell
+pip install sr-vulkan-model-waifu2x
+pip install sr-vulkan-model-realcugan
+pip install sr-vulkan-model-realesrgan
+pip install sr-vulkan-model-realsr
 ```
 
 # Use
 ```shell
-from sr-vulkan import sr-vulkan as sr
+from sr_vulkan import sr_vulkan as sr
 
 # init
 sts = sr.init()
@@ -138,7 +142,10 @@ class BuildExt(build_ext):
         config = "Debug" if self.debug else "Release"
         print("out_file, {}".format(str(extdir.parent.absolute()) + "/sr_vulkan/"))
         cmake_args = [
+            "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=" + str(extdir.parent.absolute()) + "/sr_vulkan/",
+            "-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=" + str(extdir.parent.absolute()) + "/sr_vulkan/",
             "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=" + str(extdir.parent.absolute()) + "/sr_vulkan/",
+            "-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_RELEASE="+ str(extdir.parent.absolute()) + "/sr_vulkan/",
             "-DCMAKE_BUILD_TYPE=" + config,
         ]
         if Plat == "darwin":
