@@ -77,9 +77,12 @@ message("include " ${Python3_INCLUDE_DIRS})
 
 if(WIN32)
     target_link_directories(sr-vulkan PRIVATE ${Python3_LIBRARY_DIRS})
+    set(WAIFU2X_LINK_LIBRARIES ncnn ${DEPS_CODEC_LIBRARIES} ${Vulkan_LIBRARY} ${PYTHON_LIBRARY})
+elseif(APPLE)
+    set(WAIFU2X_LINK_LIBRARIES ncnn ${DEPS_CODEC_LIBRARIES} ${Vulkan_LIBRARY})
+else()
+    set(WAIFU2X_LINK_LIBRARIES ncnn ${DEPS_CODEC_LIBRARIES} )
 endif()
-
-set(WAIFU2X_LINK_LIBRARIES ncnn ${DEPS_CODEC_LIBRARIES} ${Vulkan_LIBRARY})
 
 if(USE_STATIC_MOLTENVK)
     find_library(CoreFoundation NAMES CoreFoundation)

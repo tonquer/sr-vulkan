@@ -1,5 +1,5 @@
 LIB_NAME=sr-vulkan
-TAG_NAME=v1.3.0
+$TAG_NAME='v2.0.0'
 PACKAGE_PREFIX=${LIB_NAME}-${TAG_NAME}}
 PACKAGENAME=${PACKAGE_PREFIX}-ubuntu
 oldPath=`pwd`

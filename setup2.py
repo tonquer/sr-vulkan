@@ -6,8 +6,8 @@ from distutils.core import Extension
 
 long_description = \
 """
-#sr-vulkan
-- This is modified [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan), Export pyd and so files to Python
+# sr-vulkan
+- This is modified [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan), [realsr-ncnn-vulkan](https://github.com/nihui/realsr-ncnn-vulkan) [realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan) [xinntao/Real-ESRGAN-ncnn-vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/), Export pyd and so files to Python
 - Support Linux, Windows, MacOs
 - Support import JPG, PNG, BMP, GIF, WEBP, Animated WEBP, APNG
 - Support export JPG, PNG, BMP, WEBP, Animated WEBP, APNG
@@ -15,7 +15,15 @@ long_description = \
 
 # Install
 ```shell
-pip install sr-vulkan
+pip install sr-vulkan -v
+```
+
+# Install Model
+```shell
+pip install sr-vulkan-model-waifu2x
+pip install sr-vulkan-model-realcugan
+pip install sr-vulkan-model-realesrgan
+pip install sr-vulkan-model-realsr
 ```
 
 # Use
@@ -29,7 +37,7 @@ isCpuModel = False
 if sts < 0:
     # cpu model
     isCpuModel = True
-
+    
 gpuList = sr.getGpuInfo()
 print(gpuList)
 sts = sr.initSet(gpuId=0)
@@ -74,23 +82,24 @@ print("init set, code:{}".format(str(sts)))
 #    "MODEL_REALCUGAN_SE_UP4X_CONSERVATIVE",
 #    "MODEL_REALCUGAN_SE_UP4X_DENOISE3X",
 #    
-#    "MODEL_REALSR_DF2K_UP4X"
 #    "MODEL_REALESRGAN_ANIMAVIDEOV3_UP2X",
 #    "MODEL_REALESRGAN_ANIMAVIDEOV3_UP3X",
 #    "MODEL_REALESRGAN_ANIMAVIDEOV3_UP4X",
 #    "MODEL_REALESRGAN_X4PLUS_UP4X",
 #    "MODEL_REALESRGAN_X4PLUSANIME_UP4X"
-
+#    "MODEL_REALSR_DF2K_UP4X"
+    
+    
 # add picture ...
-# waifu2x.add(data=imgData, modelIndex=sr.MODEL_ANIME_STYLE_ART_RGB_NOISE0, backId=0, scale=2.5)
-# waifu2x.add(data=imgData, modelIndex=sr.MODEL_ANIME_STYLE_ART_RGB_NOISE0, backId=0, format="webp", width=1000, high=1000)
+# sr.add(data=imgData, modelIndex=sr.MODEL_ANIME_STYLE_ART_RGB_NOISE0, backId=0, scale=2.5)
+# sr.add(data=imgData, modelIndex=sr.MODEL_ANIME_STYLE_ART_RGB_NOISE0, backId=0, format="webp", width=1000, high=1000)
 
 # load picture...
-# newData, format, backId, tick = waifu2x.load(0)
+# newData, format, backId, tick = sr.load(0)
 ```
 
 """
-Version = "1.2.0"
+Version = "2.0.0"
 
 Plat = sys.platform
 
