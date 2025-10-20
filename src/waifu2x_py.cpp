@@ -66,7 +66,22 @@ waifu2x_py_init_set(PyObject* self, PyObject* args, PyObject* kwargs)
 
 #if _WIN32
         const wchar_t* path = NULL;
-        PyArg_Parse(rel, "u", &path);
+        PyObject* pyPathObj = NULL;
+        Py_ssize_t pathLength = 0;
+        // 使用 "O" 格式获取通用对象，再通过 PyUnicode_AsWideCharString 显式转换
+        if (!PyArg_Parse(rel, "O", &pyPathObj))
+        {
+            Py_RETURN_NONE;
+        }
+        if (pyPathObj && pyPathObj != Py_None)
+        {
+            path = PyUnicode_AsWideCharString(pyPathObj, &pathLength);
+            if (!path)
+            {
+                PyErr_SetString(PyExc_TypeError, "Failed to convert path to wide string");
+                Py_RETURN_NONE;
+            }
+        }
 #else 
         const char* path = NULL;
         PyArg_Parse(rel, "s", &path);
@@ -159,8 +174,19 @@ waifu2x_py_set_path(PyObject* self, PyObject* args)
     int sts;
 #if _WIN32
     const wchar_t* modelPath = 0;
-    if (!PyArg_ParseTuple(args, "|u", &modelPath))
+    PyObject* pyModelPathObj = NULL; // 声明 PyObject 指针接收参数
+    if (!PyArg_ParseTuple(args, "|O", &pyModelPathObj)) // 使用 "O" 格式获取通用对象
+    {
         Py_RETURN_NONE;
+    }
+    if (pyModelPathObj && pyModelPathObj != Py_None) 
+    {
+        modelPath = PyUnicode_AsWideCharString(pyModelPathObj, NULL);  // 转换为 wchar_t*
+        if (!modelPath) 
+        {
+            Py_RETURN_NONE;
+        }
+    }
 #else
     const char* modelPath = 0;
     if (!PyArg_ParseTuple(args, "|s", &modelPath))
@@ -184,7 +210,22 @@ waifu2x_py_set_path(PyObject* self, PyObject* args)
         PyObject* rel = PyObject_CallObject(func, pyargs);
 #if _WIN32
         const wchar_t* path = NULL;
-        PyArg_Parse(rel, "u#", &path);
+        PyObject* pyPathObj = NULL;
+        Py_ssize_t pathLength = 0;
+        // 使用 "O" 格式获取通用对象，再通过 PyUnicode_AsWideCharString 显式转换
+        if (!PyArg_Parse(rel, "O", &pyPathObj)) 
+        {
+            Py_RETURN_NONE;
+        }
+        if (pyPathObj && pyPathObj != Py_None) 
+        {
+            path = PyUnicode_AsWideCharString(pyPathObj, &pathLength);
+            if (!path) 
+            {
+                PyErr_SetString(PyExc_TypeError, "Failed to convert path to wide string");
+                Py_RETURN_NONE;
+            }
+        }
 #else
         const char* path = NULL;
         PyArg_Parse(rel, "s#", &path);
