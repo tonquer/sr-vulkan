@@ -175,8 +175,11 @@ unsigned char* spng_load_memery(Task& v, int *out_width, int *out_height, int* c
     int ret = 0;
     spng_ctx *ctx = NULL;
     unsigned char *image_out = NULL;
+    unsigned char *out_image = NULL;
     size_t out_size = 0;
     struct spng_ihdr ihdr;
+    int has_alpha = 0;
+    int output_format = 0;
     ctx = spng_ctx_new(0);
     if (!ctx) {
         v.err = "create spng error";
@@ -192,7 +195,6 @@ unsigned char* spng_load_memery(Task& v, int *out_width, int *out_height, int* c
         v.err = spng_strerror(ret);
         goto cleanup;
     }
-    int has_alpha = 0;
     if (ihdr.color_type == SPNG_COLOR_TYPE_TRUECOLOR_ALPHA ||
         ihdr.color_type == SPNG_COLOR_TYPE_GRAYSCALE_ALPHA) {
         has_alpha = 1;
@@ -202,13 +204,13 @@ unsigned char* spng_load_memery(Task& v, int *out_width, int *out_height, int* c
             has_alpha = 1;
         }
     }
-    int output_format = has_alpha ? SPNG_FMT_RGBA8 : SPNG_FMT_RGB8;
+    output_format = has_alpha ? SPNG_FMT_RGBA8 : SPNG_FMT_RGB8;
     *channels = has_alpha ? 4 : 3;
     *out_width = ihdr.width;
     *out_height = ihdr.height;
 
     spng_decoded_image_size(ctx, output_format, &out_size);
-    unsigned char *out_image = (unsigned char *)malloc(out_size);
+    out_image = (unsigned char *)malloc(out_size);
     if (!out_image) {
         goto cleanup;
     }

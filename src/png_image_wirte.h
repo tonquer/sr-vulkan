@@ -11,6 +11,7 @@ int save_png_file(const char* filename, const unsigned char* image_data, uint32_
     int ret = 0;
     FILE* fp = NULL;
     spng_ctx* ctx = NULL;
+    struct spng_ihdr ihdr = { 0 };
 
     // 1. 打开要写入的文件
     fp = fopen(filename, "wb");
@@ -35,7 +36,6 @@ int save_png_file(const char* filename, const unsigned char* image_data, uint32_
     }
 
     // 4. 设置 PNG 头信息 (IHDR)
-    struct spng_ihdr ihdr = { 0 };
     ihdr.width = width;
     ihdr.height = height;
     ihdr.bit_depth = 8;                      // 每个通道 8 位

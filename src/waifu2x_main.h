@@ -22,6 +22,7 @@
 #include <time.h>
 #include <sys/timeb.h>
 #include <sys/stat.h>
+#include <atomic>
 
 #if _WIN32
 typedef wchar_t Waifu2xChar;

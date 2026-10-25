@@ -77,7 +77,7 @@ void* waifu2x_decode(void* args)
             break;
         if (IsExitFlag)
             break;
-        int modelLen = sizeof(AllModel) / sizeof(AllModel[0]);
+        int modelLen = sizeof(AllModel) / sizeof(AllModel[0]) * 2;
 
         if (v.modelIndex >= (modelLen))
         {

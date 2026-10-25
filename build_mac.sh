@@ -1,11 +1,11 @@
 # export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 LIB_NAME=sr-vulkan
-TAG_NAME='v2.0.1'
+TAG_NAME='v2.1.0'
 PACKAGE_PREFIX=${LIB_NAME}-${TAG_NAME}
 PACKAGENAME=${PACKAGE_PREFIX}-macos
 
-oldPath=`pwd`
 # OpemMP
+oldPath=`pwd`
 if [ ! -d "openmp-11.0.0.src" ];then
       wget 'https://github.com/llvm/llvm-project/releases/download/llvmorg-11.0.0/openmp-11.0.0.src.tar.xz'
       tar -xf openmp-11.0.0.src.tar.xz

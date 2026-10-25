@@ -128,7 +128,7 @@ static int mymodule_exec(PyObject *m) {
 }
 
 static struct PyModuleDef_Slot Slots[] = {
-    {Py_mod_exec, mymodule_exec},
+    {Py_mod_exec, (void*)mymodule_exec},
 #ifdef Py_MOD_GIL_NOT_USED
     // 如果定义了该宏，说明当前编译环境是 Python 3.13+ 且支持 Freethreading
     {Py_mod_gil, (void*)Py_MOD_GIL_NOT_USED},
