@@ -361,7 +361,7 @@ End:
     }
     return ok;
 }
-bool save_apng(Task& v)
+bool apng_save(Task& v)
 {
     bool ok = false;
     int      a = 0, k;

@@ -56,7 +56,7 @@ public:
     unsigned long toH;
     float scale = 2;
     int tileSize = 0;
-    int webp_quality = 90;
+    int webp_quality = 100;
 
     struct timeb startTick;
     struct timeb decodeTick;

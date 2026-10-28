@@ -20,7 +20,7 @@ static int TotalJobsEncode = 0;
 static int NumThreads = 1;          // cpu threads
 static std::atomic<int> AutoTaskId(1);
 
-static int WebpQuality = 90;
+static int WebpQuality = 100;
 static int RealcuganSyncgap = 1;
 
 static bool IsDebug = false;
@@ -144,7 +144,7 @@ void* waifu2x_encode(void* args)
         else
         {
             const char* err = stbi_failure_reason();
-            if (err)
+            if (err && v.err.empty())
             {
                 v.err = err;
             }
@@ -163,9 +163,15 @@ void* waifu2x_process_data(Task &v, const SuperResolution* waifu2x, LoadThreadPa
     else
         name = "cpu";
 
-    waifu2x_printf(stdout, "[SR_VULKAN] start encode thread: %d, imageId :%d, gpu:%s, format:%s, model:%s, noise:%d, scale:%d, to_scale:%.2f, tta:%d, tileSize:%d, to_tile:%d\n",
-        ltp->thread_id, v.callBack, name, v.save_format.c_str(), waifu2x->mode_name.c_str(), waifu2x->noise, waifu2x->scale, v.scale, waifu2x->tta_mode, waifu2x->tilesize, v.tileSize);
-
+    if (v.toH <= 0 || v.toW <= 0)
+    {
+        waifu2x_printf(stdout, "[SR_VULKAN] start encode thread: %d, imageId :%d, gpu:%s, format:%s, model:%s, noise:%d, scale:%d, to_scale:%.2f, tta:%d, tileSize:%d, to_tile:%d\n",
+            ltp->thread_id, v.callBack, name, v.save_format.c_str(), waifu2x->mode_name.c_str(), waifu2x->noise, waifu2x->scale, v.scale, waifu2x->tta_mode, waifu2x->tilesize, v.tileSize);
+    }
+    else {
+        waifu2x_printf(stdout, "[SR_VULKAN] start encode thread: %d, imageId :%d, gpu:%s, format:%s, model:%s, noise:%d, scale:%d, to_size:%d_%d, tta:%d, tileSize:%d, to_tile:%d\n",
+            ltp->thread_id, v.callBack, name, v.save_format.c_str(), waifu2x->mode_name.c_str(), waifu2x->noise, waifu2x->scale, v.toW, v.toH, waifu2x->tta_mode, waifu2x->tilesize, v.tileSize);
+    }
     int scale_run_count = 1;
     int frame = 0;
     for (std::list<ncnn::Mat*>::iterator in = v.inImage.begin(); in != v.inImage.end(); in++)
@@ -1173,7 +1179,9 @@ int waifu2x_addData(const unsigned char* data, unsigned int size, int callBack, 
     if (format) v.save_format = format;
     
     transform(v.save_format.begin(), v.save_format.end(), v.save_format.begin(), ::tolower);
-    if (v.save_format.length() == 0 || !v.save_format.compare("jpg") || !v.save_format.compare("jpeg") || !v.save_format.compare("png") || !v.save_format.compare("webp") || !v.save_format.compare("jpg") || !v.save_format.compare("bmp") || !v.save_format.compare("apng"))
+    if (v.save_format.length() == 0 || !v.save_format.compare("jpg") || !v.save_format.compare("jpeg") || 
+    !v.save_format.compare("png") || !v.save_format.compare("webp") || !v.save_format.compare("jpg") || 
+    !v.save_format.compare("bmp") || !v.save_format.compare("apng") || !v.save_format.compare("jxl"))
     {
         Todecode.put(v);
         return v.id;

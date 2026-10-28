@@ -23,20 +23,42 @@
 #include "apng_image.h"
 #include "png_image.h"
 #include "jpeg_image.h"
+#include "jxl_image.h"
+
+static void check_to_resize(Task& v)
+{
+    std::list<ncnn::Mat*>::iterator it;
+
+    for (it = v.outImage.begin(); it != v.outImage.end(); it++)
+    {
+        ncnn::Mat* inimage = *it;
+        if (!inimage || inimage->empty()) {
+            continue;
+        }
+
+        if ((v.toW > 0 && v.toH > 0) && (v.toW != inimage->w || v.toH != inimage->h))
+        {
+            ncnn::Mat* new_mat = new ncnn::Mat();
+            new_mat->create(v.toW, v.toH, (size_t)inimage->elemsize, inimage->elempack);
+            stbir_resize(inimage->data, inimage->w, inimage->h, 0, new_mat->data, v.toW, v.toH, 0, STBIR_TYPE_UINT8, inimage->elempack, STBIR_ALPHA_CHANNEL_NONE, 0,
+                STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
+                STBIR_FILTER_BOX, STBIR_FILTER_BOX,
+                STBIR_COLORSPACE_SRGB, nullptr
+            );
+
+            inimage->release();
+            delete inimage;
+            *it = new_mat;
+        }
+    }
+}
 
 bool bmp_save(Task &v)
 {
     bool success;
     ncnn::Mat& outimage = **v.outImage.begin();
-    unsigned char* odata = (unsigned char*)malloc(v.toW * v.toH * outimage.elempack);
-    stbir_resize((unsigned char*)outimage.data, outimage.w, outimage.h, 0, odata, v.toW, v.toH, 0, STBIR_TYPE_UINT8, outimage.elempack, STBIR_ALPHA_CHANNEL_NONE, 0,
-        STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
-        STBIR_FILTER_BOX, STBIR_FILTER_BOX,
-        STBIR_COLORSPACE_SRGB, nullptr
-    );
     WriteData data(v.toH, v.toW, outimage.elempack);
-    stbi_write_bmp_to_func((stbi_write_func*)write_jpg_to_mem, (void*)&data, v.toW, v.toH, outimage.elempack, odata);
-    stbi_image_free(odata);
+    stbi_write_bmp_to_func((stbi_write_func*)write_jpg_to_mem, (void*)&data, outimage.w, outimage.h, outimage.elempack, outimage.data);
     if (data.writeSize > 0)
     {
         success = true;
@@ -53,28 +75,8 @@ bool bmp_save(Task &v)
 bool png_save(Task& v)
 {
     bool success = true;
-    /*#if _WIN32
-    success = wic_encode_image_to_data(v.outimage.w, v.outimage.h, v.outimage.elempack, v.outimage.data, v.out, v.outSize, v.modelIndex, v.toW, v.toH, w, h);
-#else*/
-    {
-        ncnn::Mat& outimage = **v.outImage.begin();
-        if ((v.toW > 0 && v.toH > 0) && (v.toW != outimage.w || v.toH != outimage.h))
-        {
-            unsigned char* odata = (unsigned char*)malloc(v.toW * v.toH * outimage.elempack);
-            stbir_resize((unsigned char*)outimage.data, outimage.w, outimage.h, 0, odata, v.toW, v.toH, 0, STBIR_TYPE_UINT8, outimage.elempack, STBIR_ALPHA_CHANNEL_NONE, 0,
-                STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
-                STBIR_FILTER_BOX, STBIR_FILTER_BOX,
-                STBIR_COLORSPACE_SRGB, nullptr
-            );
-            success = spng_save_memery(v, v.toW, v.toH, outimage.elempack, (const unsigned char*)odata);
-            //v.out = stbi_write_png_to_mem(odata, 0, v.toW, v.toH, outimage.elempack, &v.outSize);
-            stbi_image_free(odata);
-            //success = (v.out != nullptr);
-        }
-        else {
-            success = spng_save_memery(v, outimage.w, outimage.h, outimage.elempack, (const unsigned char*)outimage.data);
-        }
-    }
+    ncnn::Mat& outimage = **v.outImage.begin();
+    success = spng_save_memery(v, outimage.w, outimage.h, outimage.elempack, (const unsigned char*)outimage.data);
     return success;
     //#endif
 }
@@ -83,34 +85,7 @@ bool jpg_save(Task& v)
 {
     bool success;
     ncnn::Mat& outimage = **v.outImage.begin();
-    if ((v.toW > 0 && v.toH > 0) && (v.toW != outimage.w || v.toH != outimage.h))
-    {
-        unsigned char* odata = (unsigned char*)malloc(v.toW * v.toH * outimage.elempack);
-        stbir_resize((unsigned char*)outimage.data, outimage.w, outimage.h, 0, odata, v.toW, v.toH, 0, STBIR_TYPE_UINT8, outimage.elempack, STBIR_ALPHA_CHANNEL_NONE, 0,
-            STBIR_EDGE_CLAMP, STBIR_EDGE_CLAMP,
-            STBIR_FILTER_BOX, STBIR_FILTER_BOX,
-            STBIR_COLORSPACE_SRGB, nullptr
-        );
-        success = jpeg_save_memery(v, v.toW, v.toH, outimage.elempack, (const unsigned char*)odata);
-        stbi_image_free(odata);
-
-        /*WriteData data(v.toH, v.toW, outimage.elempack);
-        stbi_write_jpg_to_func((stbi_write_func*)write_jpg_to_mem, (void*)&data, v.toW, v.toH, outimage.elempack, odata, 100);
-        stbi_image_free(odata);
-        if (data.writeSize > 0)
-        {
-            success = true;
-            v.out = malloc(data.writeSize);
-            v.outSize = data.writeSize;
-            memcpy(v.out, data.data, v.outSize);
-        }
-        else {
-            success = false;
-        }*/
-    }
-    else {
-        success = jpeg_save_memery(v, outimage.w, outimage.h, outimage.elempack, (const unsigned char*)outimage.data);
-    }
+    success = jpeg_save_memery(v, outimage.w, outimage.h, outimage.elempack, (const unsigned char*)outimage.data);
     return success;
 }
 
@@ -119,18 +94,22 @@ bool to_save(Task &v)
 {
     if (!v.save_format.compare("bmp"))
     {
+        check_to_resize(v);
         return bmp_save(v);
     }
     else if (!v.save_format.compare("png"))
     {
+        check_to_resize(v);
         return png_save(v);
     }
     else if (!v.save_format.compare("jpg") || !v.save_format.compare("jpeg"))
     {
+        check_to_resize(v);
         return jpg_save(v);
     }
     else if (!v.save_format.compare("webp"))
     {
+        check_to_resize(v);
         if (v.outImage.size() <= 1)
             return webp_save(v);
         else
@@ -138,7 +117,13 @@ bool to_save(Task &v)
     }
     else if (!v.save_format.compare("apng"))
     {
-        return save_apng(v);
+        check_to_resize(v);
+        return apng_save(v);
+    }
+    else if (!v.save_format.compare("jxl"))
+    {
+        check_to_resize(v);
+        return jxl_save(v);
     }
     return false;
 }
@@ -256,6 +241,10 @@ bool to_load(Task& v)
     if (!isSuc)
     {
         isSuc = load_png(v);
+    }
+    if (!isSuc)
+    {
+        isSuc = load_jxl(v);
     }
     if(!isSuc)
     {

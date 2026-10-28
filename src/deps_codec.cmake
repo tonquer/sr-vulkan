@@ -61,7 +61,6 @@ if(NOT USE_SYSTEM_JPEG)
         BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
         INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
     )
-
     add_dependencies(sr-vulkan deps-libjpeg-turbo)
 
     target_include_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
@@ -232,4 +231,48 @@ if(NOT USE_SYSTEM_WEBP)
     endif()
 endif()
 
-set(DEPS_CODEC_LIBRARIES ${WebP_LIBRARIES} ${JPEG_LIBRARIES} ${PNG_LIBRARIES} ${ZLIB_LIBRARIES})
+if(NOT USE_SYSTEM_JXL)
+    # build libjxl library
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libjxl/CMakeLists.txt")
+        message(FATAL_ERROR "The submodules were not downloaded! Please update submodules with \"git submodule update --init --recursive\" and try again.")
+    endif()
+
+    include(ExternalProject)
+    ExternalProject_Add(deps-libjxl
+        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libjxl"
+        BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/libjxl"
+        INSTALL_DIR "${CMAKE_CURRENT_BINARY_DIR}/deps-install"
+        CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+            -DCMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
+            -DBUILD_SHARED_LIBS=OFF
+            -DJPEGXL_ENABLE_TRANSCODE_JPEG=OFF 
+            -DJPEGXL_ENABLE_TOOLS=OFF
+            -DJPEGXL_ENABLE_BENCHMARK=OFF 
+            -DJPEGXL_ENABLE_EXAMPLES=OFF 
+            -DJPEGXL_ENABLE_MANPAGES=OFF 
+            -DJPEGXL_ENABLE_DOXYGEN=OFF 
+            -DJPEGXL_ENABLE_JNI=OFF 
+            -DJPEGXL_ENABLE_PLUGINS=OFF 
+            -DJPEGXL_ENABLE_VIEWERS=OFF 
+            -DJPEGXL_ENABLE_SKCMS=ON 
+            -DBUILD_TESTING=OFF
+            -DCMAKE_CXX_FLAGS="-fPIC"
+            -DCMAKE_C_FLAGS="-fPIC"
+        BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
+        INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR> --config ${CMAKE_BUILD_TYPE}
+    )
+
+    add_dependencies(sr-vulkan deps-libjxl)
+
+    target_include_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_INCLUDEDIR}")
+    target_link_directories(sr-vulkan PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/deps-install/${CMAKE_INSTALL_LIBDIR}")
+    if(WIN32)
+        set(JXL_LIBRARIES jxl jxl_cms jxl_threads hwy brotlienc brotlidec brotlicommon)
+    else()
+        set(JXL_LIBRARIES jxl jxl_cms jxl_threads hwy brotlienc brotlidec brotlicommon)
+    endif()
+endif()
+
+set(DEPS_CODEC_LIBRARIES ${WebP_LIBRARIES} ${JPEG_LIBRARIES} ${PNG_LIBRARIES} ${ZLIB_LIBRARIES} ${JXL_LIBRARIES})
