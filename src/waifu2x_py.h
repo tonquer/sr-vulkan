@@ -24,6 +24,9 @@ static PyObject*
 waifu2x_py_set_webp_quality(PyObject* self, PyObject* args);
 
 static PyObject*
+waifu2x_py_set_auto_transform(PyObject* self, PyObject* args);
+
+static PyObject*
 waifu2x_py_set_realcugan_syncgap(PyObject* self, PyObject* args);
 
 static PyObject*
@@ -74,6 +77,8 @@ static PyMethodDef SpamMethods[] = {
      "Init setting\ngpuId: getGpuInfo get index \ncpuNum(Option): CPU model use CPU num, default cpu num / 2 \n"},
     {"setWebpQuality",  (PyCFunction)waifu2x_py_set_webp_quality, METH_VARARGS,\
      "set webp quality \ncan go from 0 (smaller output, lower quality) to 100 (best quality,larger output) \n"},
+    {"setAutoTransform",  (PyCFunction)waifu2x_py_set_auto_transform, METH_VARARGS,\
+     "set auto transform by exif, default: true \n"},
     {"setRealcuganSyncgap",  (PyCFunction)waifu2x_py_set_realcugan_syncgap, METH_VARARGS,\
      "set realcugan syncgap \ncan go from 1 (slot) to 3 (fast) \n"},
     {"add",  (PyCFunction)waifu2x_py_add, METH_VARARGS | METH_KEYWORDS,
@@ -150,5 +155,5 @@ static struct PyModuleDef spammodule = {
 
 static bool IsInit = false;
 static bool IsInitSet = false;
-static const char* Version = "2.1.0";
+static const char* Version = "2.2.0";
 #endif 

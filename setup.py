@@ -105,7 +105,7 @@ print("init set, code:{}".format(str(sts)))
 ```
 
 """
-Version = "2.1.0"
+Version = "2.2.0"
 
 Plat = sys.platform
 
@@ -167,6 +167,8 @@ class BuildExt(build_ext):
             ]
         else:
             cmake_args += [
+                "-DCMAKE_C_COMPILER=clang",
+                "-DCMAKE_CXX_COMPILER=clang++",
                 "-DVulkan_LIBRARY={}".format(os.path.abspath("VulkanSDK/linux/libvulkan.so")),
                 "-DVulkan_INCLUDE_DIR={}".format(os.path.abspath("VulkanSDK/Include")),
             ]

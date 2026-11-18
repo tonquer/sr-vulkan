@@ -51,7 +51,7 @@ if(NOT USE_SYSTEM_NCNN)
     if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ncnn/CMakeLists.txt")
         message(FATAL_ERROR "The submodules were not downloaded! Please update submodules with \"git submodule update --init --recursive\" and try again.")
     endif()
-
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
     option(NCNN_INSTALL_SDK "" OFF)
     option(NCNN_PIXEL_ROTATE "" OFF)
     option(NCNN_PIXEL_AFFINE "" OFF)

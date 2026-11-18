@@ -8,41 +8,91 @@
 #include "webp/encode.h"
 #include "webp/demux.h"
 #include "webp/mux.h"
+#include "common_image.h"
 
 bool load_webp(Task &v)
 {
-    unsigned char* pixeldata = 0;
+    uint8_t* pixeldata = 0;
+    uint8_t * finalPixeldata = 0;
+    // 1. 使用 WebPDemux 检查动画与 EXIF 方向（零拷贝包装内存）
+    WebPData webp_data = { (const uint8_t*)v.fileDate, v.fileSize};
+    WebPDemuxer* demux = WebPDemux(&webp_data);
+    if (!demux)
+        return false;
 
+    uint32_t flags = WebPDemuxGetI(demux, WEBP_FF_FORMAT_FLAGS);
+    if (flags & ANIMATION_FLAG)
+    {
+        WebPDemuxDelete(demux);
+        return false;
+    }
+
+    int orientation = 1;
+    if (v.auto_transfom && (flags & EXIF_FLAG))
+    {
+        WebPChunkIterator chunk_iter;
+        if (WebPDemuxGetChunk(demux, "EXIF", 1, &chunk_iter))
+        {
+            const uint8_t* exif_bytes = chunk_iter.chunk.bytes;
+            size_t exif_size = chunk_iter.chunk.size;
+            // 兼容部分非标准工具误写入的 "Exif\0\0" 6字节前缀
+            if (exif_size > 6 && std::memcmp(exif_bytes, "Exif\0\0", 6) == 0)
+            {
+                exif_bytes += 6;
+                exif_size -= 6;
+            }
+            orientation = parse_tiff_exif_orientation(exif_bytes, exif_size);
+            WebPDemuxReleaseChunkIterator(&chunk_iter);
+        }
+    }
+    WebPDemuxDelete(demux);
+
+    // 2. 初始化解码配置并获取图像特征
     WebPDecoderConfig config;
-    WebPInitDecoderConfig(&config);
+    if (!WebPInitDecoderConfig(&config))
+        return false;
 
     if (WebPGetFeatures((uint8_t *)v.fileDate, v.fileSize, &config.input) != VP8_STATUS_OK)
         return false;
 
-    if (config.input.has_animation)
-    {
-        return false;
-    }
-
     int width = config.input.width;
     int height = config.input.height;
     int channels = config.input.has_alpha ? 4 : 3;
-    pixeldata = (unsigned char*)malloc(width * height * channels);
 
-    config.output.colorspace = channels == 4 ? MODE_RGBA : MODE_RGB;
+    size_t stride = (size_t)width * channels;
+    size_t buf_size = stride * (size_t) height;
 
-    config.output.u.RGBA.stride = width * channels;
-    config.output.u.RGBA.size = width * height * channels;
+    pixeldata = (uint8_t *) malloc(buf_size);
+    if (!pixeldata)
+        return false;
+
+    config.output.colorspace = (channels == 4) ? MODE_RGBA : MODE_RGB;
+    config.output.u.RGBA.stride = static_cast<int>(stride);
+    config.output.u.RGBA.size = buf_size;
     config.output.u.RGBA.rgba = pixeldata;
     config.output.is_external_memory = 1;
 
-    VP8StatusCode code = WebPDecode((uint8_t *)v.fileDate, v.fileSize, &config);
+    // 3. 执行解码
+    VP8StatusCode code = WebPDecode((uint8_t*)v.fileDate, v.fileSize, &config);
+    WebPFreeDecBuffer(&config.output); // 清理内部状态（不会释放 external_memory）
+
     if (code != VP8_STATUS_OK)
     {
         free(pixeldata);
         return false;
     }
-    ncnn::Mat* inimage = new ncnn::Mat(width, height, (void*)pixeldata, (size_t)channels, channels);
+    if (orientation != 1)
+    {
+        finalPixeldata = apply_orientation(pixeldata, width, height, channels, orientation);
+    }
+    ncnn::Mat* inimage;
+    if (finalPixeldata != nullptr && finalPixeldata != pixeldata) {
+        free(pixeldata);
+        inimage = new ncnn::Mat(width, height, (void*)finalPixeldata, (size_t)channels, channels);
+    }
+    else {
+        inimage = new ncnn::Mat(width, height, (void*)pixeldata, (size_t)channels, channels);
+    }
     v.inImage.push_back(inimage);
     v.inFrame.push_back(100);
     if (v.save_format.length() == 0) v.save_format = "webp";

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "jpeglib.h"
+#include "common_image.h"
 
 struct safe_jpeg_error_mgr
 {
@@ -27,9 +28,10 @@ static void safe_jpeg_output_message(j_common_ptr cinfo)
 {
 }
 
-unsigned char* jpeg_load_memery(const unsigned char* buffer, int len, int* w, int* h, int* c)
+unsigned char* jpeg_load_memery(const unsigned char* buffer, int len, int* w, int* h, int* c, bool auto_transfom)
 {
     unsigned char* pixeldata = 0;
+    uint8_t * outPixels = 0;
 
     struct jpeg_decompress_struct cinfo;
     struct safe_jpeg_error_mgr jerr;
@@ -47,12 +49,28 @@ unsigned char* jpeg_load_memery(const unsigned char* buffer, int len, int* w, in
 
     jpeg_create_decompress(&cinfo);
 
+    if (auto_transfom) {
+        jpeg_save_markers(&cinfo, JPEG_APP0 + 1, 0xFFFF);
+    }
+
     jpeg_mem_src(&cinfo, (unsigned char*)buffer, len);
 
     if (jpeg_read_header(&cinfo, TRUE) != JPEG_HEADER_OK)
     {
         jpeg_destroy_decompress(&cinfo);
         return NULL;
+    }
+
+    // 遍历保留的标记，提取 EXIF 旋转方向
+    int orientation = 1;
+    if (auto_transfom) {
+        for (jpeg_saved_marker_ptr m = cinfo.marker_list; m != nullptr; m = m->next) {
+            if (m->marker == JPEG_APP0 + 1)
+            {
+                orientation = get_exif_orientation(m->data, m->data_length);
+                if (orientation != 1) break;
+            }
+        }
     }
 
     // always output RGB 8bit
@@ -77,11 +95,16 @@ unsigned char* jpeg_load_memery(const unsigned char* buffer, int len, int* w, in
 
     jpeg_destroy_decompress(&cinfo);
 
+    outPixels = apply_orientation(pixeldata, width, height, 3, orientation);
     *w = width;
     *h = height;
     *c = 3;
-
-    return pixeldata;
+    if (outPixels != nullptr && outPixels != pixeldata) {
+        free(pixeldata);
+        return outPixels;
+    } else {
+        return pixeldata;
+    }    
 }
 
 int jpeg_save_memery(Task& v, int w, int h, int c, const unsigned char* pixeldata)
@@ -154,7 +177,7 @@ bool load_jpeg(Task& v)
     bool ok = true;
     void* result = 0;
     int w = 0, h = 0, c = 0;
-    pixeldata = jpeg_load_memery((unsigned char*)v.fileDate, v.fileSize, &w, &h, &c);
+    pixeldata = jpeg_load_memery((unsigned char*)v.fileDate, v.fileSize, &w, &h, &c, v.auto_transfom);
     if (!pixeldata)
     {
         return false;

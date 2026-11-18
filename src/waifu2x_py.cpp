@@ -97,7 +97,7 @@ waifu2x_py_set_webp_quality(PyObject* self, PyObject* args)
 {
     int quality=0;
     if (!PyArg_ParseTuple(args, "i", &quality))
-        PyLong_FromLong(-1);
+        return PyLong_FromLong(-1);
     if (quality <= 0 || quality > 100)
     {
         return PyLong_FromLong(-1);
@@ -107,11 +107,22 @@ waifu2x_py_set_webp_quality(PyObject* self, PyObject* args)
 }
 
 static PyObject*
+waifu2x_py_set_auto_transform(PyObject* self, PyObject* args)
+{
+    int flag = 0;
+    if (!PyArg_ParseTuple(args, "p", &flag))
+        return PyLong_FromLong(-1);
+    waifu2x_set_auto_transform(flag);
+    return PyLong_FromLong(0);
+}
+
+
+static PyObject*
 waifu2x_py_set_realcugan_syncgap(PyObject* self, PyObject* args)
 {
     int syncgap = 0;
     if (!PyArg_ParseTuple(args, "i", &syncgap))
-        PyLong_FromLong(-1);
+        return PyLong_FromLong(-1);
     if (syncgap <= 0 || syncgap > 3)
     {
         return PyLong_FromLong(-1);
@@ -353,11 +364,11 @@ waifu2x_py_get_info(PyObject* self, PyObject* args)
         Py_RETURN_NONE;
     }
     int gpu_count = ncnn::get_gpu_count();
+    PyObject* pyList = PyList_New(gpu_count);
     if (gpu_count <= 0)
     {
-        Py_RETURN_NONE;
+        return pyList;
     }
-    PyObject* pyList = PyList_New(gpu_count);
     for (int i = 0; i < gpu_count; i++)
     {
         const char* name = ncnn::get_gpu_info(i).device_name();

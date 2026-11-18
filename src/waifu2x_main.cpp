@@ -20,8 +20,9 @@ static int TotalJobsEncode = 0;
 static int NumThreads = 1;          // cpu threads
 static std::atomic<int> AutoTaskId(1);
 
-static int WebpQuality = 100;
+static int GlobalWebpQuality = 100;
 static int RealcuganSyncgap = 1;
+static bool GlobalAutoTransform = true;
 
 static bool IsDebug = false;
 
@@ -1169,7 +1170,8 @@ int waifu2x_addData(const unsigned char* data, unsigned int size, int callBack, 
     v.toW = toW;
     v.scale = scale;
     v.tileSize = tileSize;
-    v.webp_quality = WebpQuality;
+    v.webp_quality = GlobalWebpQuality;
+    v.auto_transfom = GlobalAutoTransform;
     if ((toH <= 0 || toW <= 0) && scale <= 0)
     {
         waifu2x_set_error("invalid scale params");
@@ -1229,7 +1231,13 @@ int waifu2x_set_debug(bool isdebug)
 
 int waifu2x_set_webp_quality(int webp_quality)
 {
-    WebpQuality = webp_quality;
+    GlobalWebpQuality = webp_quality;
+    return 0;
+}
+
+int waifu2x_set_auto_transform(bool isAutoTransform)
+{
+    GlobalAutoTransform = isAutoTransform;
     return 0;
 }
 

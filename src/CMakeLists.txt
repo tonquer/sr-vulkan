@@ -2,12 +2,14 @@
 cmake_minimum_required(VERSION 3.15)
 cmake_policy(SET CMP0069 NEW)
 set(CMAKE_POLICY_DEFAULT_CMP0069 NEW)
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+#set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 project(sr-vulkan)
 
 set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_STANDARD 11)
+
 option(USE_SYSTEM_NCNN "build with system libncnn" OFF)
 option(USE_SYSTEM_WEBP "build with system libwebp" OFF)
 option(USE_SYSTEM_JXL "build with system libjxl" OFF)

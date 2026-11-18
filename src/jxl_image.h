@@ -23,6 +23,13 @@ bool load_jxl(Task& v) {
         JxlDecoderDestroy(dec);
         return false;
     }
+    
+    if (v.auto_transfom) {
+        JxlDecoderSetKeepOrientation(dec, JXL_FALSE);
+    } else {
+        JxlDecoderSetKeepOrientation(dec, JXL_TRUE);
+    }
+
     JxlDecoderSetInput(dec, (const uint8_t *)v.fileDate, v.fileSize);
     JxlDecoderCloseInput(dec);
     // 固定以 4 通道 8-bit RGBA 像素格式输出

@@ -57,6 +57,7 @@ public:
     float scale = 2;
     int tileSize = 0;
     int webp_quality = 100;
+    bool auto_transfom = true;
 
     struct timeb startTick;
     struct timeb decodeTick;
@@ -241,6 +242,7 @@ int waifu2x_stop();
 int waifu2x_clear();
 int waifu2x_set_debug(bool);
 int waifu2x_set_webp_quality(int);
+int waifu2x_set_auto_transform(bool);
 int waifu2x_set_realcugan_syncgap(int);
 int waifu2x_printf(void* p, const char* fmt, ...);
 int waifu2x_printf(void* p, const wchar_t* fmt, ...);
@@ -271,9 +273,9 @@ public:
     void *data = NULL;
     WriteData(int h, int w, int n)
     {
-
-        size = h*w*n;
-        data = malloc(size);
+        size_t row_stride = ((static_cast<size_t>(w) * n + 3) / 4) * 4;
+        size_t capacity = 54 + row_stride * static_cast<size_t>(h) + 64;
+        data = malloc(capacity);
     }
     ~WriteData()
     {
@@ -283,13 +285,6 @@ public:
 
 
 };
-static void write_jpg_to_mem(void *writeData, void *data, int size)
-{
-    WriteData *write = static_cast<WriteData *>(writeData);
-    memcpy((unsigned char *)write->data + write->writeSize, data, size);
-    write->writeSize += size;
-}
-
 
 static const std::string AllModel[] =
 {

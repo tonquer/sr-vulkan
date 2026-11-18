@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <png.h>
 #include "spng.h"
+#include "common_image.h"
 
 struct png_read_context
 {
@@ -171,15 +172,19 @@ bool load_png(Task& v)
     return true;
 }
 
-unsigned char* spng_load_memery(Task& v, int *out_width, int *out_height, int* channels) {
+unsigned char* spng_load_memery(Task& v, int *out_width, int *out_height, int* channels, bool auto_transfom) {
     int ret = 0;
     spng_ctx *ctx = NULL;
-    unsigned char *image_out = NULL;
-    unsigned char *out_image = NULL;
+    uint8_t* out_image = NULL;
+    uint8_t* final_pixels = NULL;
     size_t out_size = 0;
     struct spng_ihdr ihdr;
     int has_alpha = 0;
     int output_format = 0;
+    
+    int orientation = 1;
+    struct spng_exif exifChunk;
+
     ctx = spng_ctx_new(0);
     if (!ctx) {
         v.err = "create spng error";
@@ -221,9 +226,21 @@ unsigned char* spng_load_memery(Task& v, int *out_width, int *out_height, int* c
         free(out_image);
         goto cleanup;
     }
+
+    // 解码完成后，提取 eXIf 数据块（覆盖 IDAT 前后的所有位置）
+    if (auto_transfom && spng_get_exif(ctx, &exifChunk) == 0 && exifChunk.data != nullptr && exifChunk.length > 0) {
+        orientation = get_exif_orientation(reinterpret_cast<const uint8_t*>(exifChunk.data), exifChunk.length);
+    }
+    final_pixels = apply_orientation(out_image, *out_width, *out_height, *channels, orientation);
+
 cleanup:
     spng_ctx_free(ctx);
-    return image_out;
+    if (final_pixels != nullptr && final_pixels != out_image) {
+        free(out_image);
+        return final_pixels;
+    } else {
+        return out_image;
+    }
 }
 
 bool load_spng(Task& v)
@@ -232,7 +249,7 @@ bool load_spng(Task& v)
     bool ok = true;
     void* result = 0;
     int w = 0, h = 0, c = 0;
-    pixeldata = spng_load_memery(v, &w, &h, &c);
+    pixeldata = spng_load_memery(v, &w, &h, &c, v.auto_transfom);
     if (!pixeldata)
     {
         return false;
@@ -256,8 +273,8 @@ int spng_save_memery(Task& v, int w, int h, int c, const unsigned char* pixeldat
     if (!ctx)
         return 0;
     struct spng_ihdr ihdr = {0};
-    ihdr.width = static_cast<uint32_t>(w);
-    ihdr.height = static_cast<uint32_t>(h);
+    ihdr.width = (uint32_t)w;
+    ihdr.height = (uint32_t)h;
     ihdr.bit_depth = 8;
     ihdr.color_type = (c == 3) ? SPNG_COLOR_TYPE_TRUECOLOR : SPNG_COLOR_TYPE_TRUECOLOR_ALPHA;
     int ret = spng_set_ihdr(ctx, &ihdr);
@@ -267,7 +284,7 @@ int spng_save_memery(Task& v, int w, int h, int c, const unsigned char* pixeldat
         return 0;
     }
     spng_set_option(ctx, SPNG_ENCODE_TO_BUFFER, 1);
-    size_t pixel_bytes =  static_cast<size_t>(w) * h * c;
+    size_t pixel_bytes = (size_t)w * h * c;
     ret = spng_encode_image(ctx, pixeldata, pixel_bytes, SPNG_FMT_PNG, SPNG_ENCODE_FINALIZE);
     if (ret == SPNG_OK) {
         size_t out_png_size = 0;

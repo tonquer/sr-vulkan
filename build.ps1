@@ -1,5 +1,5 @@
 $LIB_NAME='sr-vulan'
-$TAG_NAME='v2.1.0'
+$TAG_NAME='v2.2.0'
 $PACKAGE_PREFIX=($LIB_NAME + '-' + $TAG_NAME)
 $PACKAGENAME=($PACKAGE_PREFIX + '-windows')
 
@@ -49,7 +49,7 @@ echo $Env:PYTHON_BIN
 echo $V
 echo $PYTHON_INCLUDE_DIRS
 echo $PYTHON_LIBRARIES
-mkdir -Force build_win; Set-Location .\build_win\
+mkdir -Force build_win2; Set-Location .\build_win2\
 cmake `
       -DVulkan_LIBRARY="..\VulkanSDK\windows\vulkan-1.lib" `
       -DVulkan_INCLUDE_DIR="..\VulkanSDK\Include" `
@@ -73,7 +73,7 @@ if (Test-Path -Path $filePath) {
     mkdir -Force "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Path "README.md" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Path "LICENSE" -Destination "$($PACKAGENAME)"
-    Copy-Item -Force -Verbose -Path "build_win\Release\sr_vulkan.pyd" -Destination "$($PACKAGENAME)"
+    Copy-Item -Force -Verbose -Path "build_win2\Release\sr_vulkan.pyd" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Recurse -Path "sr_vulkan\models" -Destination "$($PACKAGENAME)"
     Copy-Item -Force -Verbose -Recurse -Path "test" -Destination "$($PACKAGENAME)"
 } else {
