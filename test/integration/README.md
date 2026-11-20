@@ -12,6 +12,9 @@ Python需匹配扩展ABI（当前环境为 `C:/Python310/python.exe`）。图片
 # 仅测试夹具、断言、报告和调度，不初始化native
 python -B -m unittest discover -s integration -p "test_*.py" -v
 
+# 无需初始化的格式互转：49组合+12动画用例，不需要模型
+python -B integration/run_tests.py --suite convert
+
 # 六格式同格式输入/输出，APNG真两帧
 python -B integration/run_tests.py --suite formats --models models
 
@@ -29,6 +32,12 @@ python -B integration/run_tests.py --suite all --models models --jobs 8 --timeou
 ```
 
 省略 `--models` 时使用扩展的默认模型包路径。`--source <图片>` 可替换默认 `0.jpg`。任一目录参数均转成绝对路径，不依赖脚本中修改cwd。不要在整个 `test/` 下全局收集旧脚本：旧样本生成器存在import时读写图片的行为。
+
+## convert格式互转
+
+`--suite convert`直接调用 `sr.convert(data, target)`，不调用 `init/initSet/stop` 或模型/超分接口。覆盖JPG、PNG、BMP、JXL、WebP、APNG、GIF的49种单帧组合（包括同格式），另有GIF/APNG两帧到静态/动画目标的12项，以及 `convert_animation_gif_to_jxl`，共62项。转换尺寸不变，验证真实容器、像素内容及动画帧顺序；静态目标只要求首帧。输出APNG检查acTL，不把普通PNG当APNG。JXL动画使用独立libjxl解码全部帧直到SUCCESS，逐帧检查数量、尺寸、内容和顺序，拒绝只保留首帧或重复首帧。
+
+返回None立即获取 `getLastError()`；空字节、错误格式/尺寸/帧数均失败。每例仍隔离子进程，防止codec崩溃。目标GIF在当前源码没有编码实现，保留用例并明确未通过，不跳过或当作期望失败通过。结果同样生成 `简明结果.md` 和详细报告。
 
 ## 位深含义
 

@@ -1,8 +1,11 @@
+# 使用sr进行超分
+
 import os, sys
 current_path = os.path.abspath(__file__)
 os.chdir(os.path.dirname(current_path))
 from sr_vulkan import sr_vulkan as sr
 import time
+
 
 if __name__ == "__main__":
 
@@ -16,8 +19,22 @@ if __name__ == "__main__":
         isCpuModel = True
     
     # 设置自定义models路径，或者使用pip安装其他models    
+    # pip install sr-vulkan-model-waifu2x sr-vulkan-model-realcugan sr-vulkan-model-realesrgan sr-vulkan-model-realsr
     # sr.setModelPath("models")
+
+    # 开启打印
+    # open debug log
+    # sr.setDebug(True)
+
+    # 设置web图质量
+    # sr.setWebpQuality(80)
+
+    # 设置自动处理旋转exif图
+    # sr.setAutoTransform(True)
     
+    # 设置 decode/proc/encode线程数量
+    # sr.setThreadNum(1, 1, 1)
+
     # 获得Gpu列表
     # get gpu list
     infos = sr.getGpuInfo()
@@ -38,21 +55,28 @@ if __name__ == "__main__":
         sts = sr.initSet(0)
     print("init set, code:{}".format(str(sts)))
 
-    # 开启打印
-    # open debug log
-    sr.setDebug(True)
-
     f = open("0.jpg", "rb")
     data = f.read()
     f.close()
     backId = 1
     count = 0
     
-    # 设置长宽缩放2.5倍
     # start convert, by setting scale
-    if sr.add(data, sr.MODEL_REALCUGAN_PRO_UP2X_DENOISE3X, backId, 2.5, tileSize=100, format="webp") > 0:
+    if sr.add(data, sr.MODEL_WAIFU2X_CUNET_UP2X_DENOISE3X, backId, scale=2) > 0:
         count += 1
-    backId = 2
+        # load等待
+        info = sr.load(0)
+        if info:
+            newData, foramt, callBackId, tick = info
+            # backId == callBackId
+
+            f = open(str(callBackId) + "." + foramt, "wb+")
+            f.write(newData)
+            f.close()
+        else:
+            print("sr error, {}".format(sr.getLastError()))
+    else:
+        print("sr error, {}".format(sr.getLastError()))
 
     # 固定长宽
     # CPU模式默认tileSize=800，如果内存小，请调低改值
@@ -60,23 +84,6 @@ if __name__ == "__main__":
     # CPU Model default tileSize=800, if the memory is too small, Please turn down
     # if sr.add(data, sr.MODEL_WAIFU2X_CUNET_UP2X_DENOISE3X, backId, 900, 800, tileSize=200, format="webp") > 0:
         # count += 1
-
-    while count > 0:
-        time.sleep(1)
-
-        # 阻塞获取，也可放入到到线程中
-        # block
-        info = sr.load(0)
-        if not info:
-            break 
-        count -= 1
-        newData, foramt, backId, tick = info
-        if not newData:
-            print("error not found data")
-            continue
-        f = open(str(backId) + "." + foramt, "wb+")
-        f.write(newData)
-        f.close()
     
     # free ncnn, close thread
     sr.stop()

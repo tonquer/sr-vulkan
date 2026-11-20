@@ -58,7 +58,7 @@ bool bmp_save(Task &v)
 {
     bool success = false;
     ncnn::Mat& outimage = **v.outImage.begin();
-    WriteData data(v.toH, v.toW, outimage.elempack);
+    WriteData data(outimage.h, outimage.w, outimage.elempack);
     stbi_write_bmp_to_func((stbi_write_func*)write_jpg_to_mem, (void*)&data, outimage.w, outimage.h, outimage.elempack, outimage.data);
     if (data.writeSize > 0)
     {

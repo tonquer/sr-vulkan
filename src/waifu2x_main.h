@@ -59,12 +59,10 @@ public:
     int webp_quality = 100;
     bool auto_transfom = true;
 
-    struct timeb startTick;
-    struct timeb decodeTick;
-    struct timeb encodeTick;
-    struct timeb procTick;
-    struct timeb saveTick;
-    double allTick = 0;
+    double decode_tick = 0;
+    double proc_tick = 0;
+    double encode_tick = 0;
+    double all_tick = 0;
 
     std::list<int> inFrame;
     std::list<ncnn::Mat *> inImage;
@@ -73,6 +71,32 @@ public:
     void* out = 0;
     int outSize = 0;
     int allOutSize = 0;
+
+    void update_decode_ms(struct timespec& start) {
+        struct timespec end;
+        timespec_get(&end, TIME_UTC);
+        decode_tick = get_ms(end) - get_ms(start);
+    }
+
+    void update_proc_ms(struct timespec& start) {
+        struct timespec end;
+        timespec_get(&end, TIME_UTC);
+        proc_tick = get_ms(end) - get_ms(start);
+    }
+
+    void update_encode_ms(struct timespec& start) {
+        struct timespec end;
+        timespec_get(&end, TIME_UTC);
+        encode_tick = get_ms(end) - get_ms(start);
+    }
+
+    void update_all_ms() {
+        all_tick = decode_tick + proc_tick + encode_tick;
+    }
+
+    double get_ms(struct timespec & ts) {
+        return (double)((int64_t)ts.tv_sec * 1000LL + ts.tv_nsec / 1000000LL) / 1000;
+    }
 
     void clear_in_image()
     {
@@ -232,6 +256,7 @@ public:
 
 int waifu2x_addData(const unsigned char* data, unsigned int size, int callBack, int modelIndex, const char* format, unsigned long toW, unsigned long toH, float scale, int);
 int waifu2x_getData(void*& out, unsigned long& outSize, double& tick, int& callBack, char *, unsigned int timeout);
+int waifu2x_convert(const unsigned char*, unsigned int, const char*, unsigned long, unsigned long, void*&, unsigned long&);
 int waifu2x_init();
 int waifu2x_set_thread_num(int decodeThreadNum, int procThreadNum, int encodeThreadNum);
 int waifu2x_init_set(int gpuId2, int threadNum);
@@ -268,13 +293,13 @@ static std::vector<ncnn::Thread*> OtherThreads;
 class WriteData
 {
 public:
-    int size = 0;
-    int writeSize = 0;
+    size_t capacity = 0;
+    size_t writeSize = 0;
     void *data = NULL;
     WriteData(int h, int w, int n)
     {
         size_t row_stride = ((static_cast<size_t>(w) * n + 3) / 4) * 4;
-        size_t capacity = 54 + row_stride * static_cast<size_t>(h) + 64;
+        capacity = 54 + row_stride * static_cast<size_t>(h) + 64;
         data = malloc(capacity);
     }
     ~WriteData()

@@ -18,6 +18,59 @@ def options(**kwargs):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_convert_matrix_and_no_initialization(self):
+        import io
+        import json
+        import sys
+        import fixtures
+        from PIL import Image
+        cases = run_tests.make_cases('convert', [])
+        self.assertEqual(len(cases), 62)
+        self.assertEqual(len({c['name'] for c in cases}), 62)
+        self.assertIn('convert_animation_gif_to_jxl', {c['name'] for c in cases})
+        self.assertNotIn('convert_animation_apng_to_jxl', {c['name'] for c in cases})
+        image = fixtures.pattern()
+        buffer = io.BytesIO()
+        image.save(buffer, format='PNG')
+        # A fake module with no initialization API proves this branch is independent.
+        fake = SimpleNamespace(convert=lambda data, fmt: buffer.getvalue(), getLastError=lambda: 'codec error')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image.save(root / 'reference.png')
+            (root / 'input.png').write_bytes(buffer.getvalue())
+            (root / 'prepared.json').write_text(json.dumps(dict(input='input.png', references=['reference.png'])))
+            case = dict(suite='convert', format='png', target='png')
+            with patch.dict(sys.modules, {'sr_vulkan': SimpleNamespace(sr_vulkan=fake)}):
+                run_tests.worker(case, options(models='/missing'), root)
+                fake.convert = lambda data, fmt: None
+                with self.assertRaisesRegex(AssertionError, 'codec error'):
+                    run_tests.worker(case, options(), root)
+
+    def test_convert_jxl_animation_requires_both_correct_frames(self):
+        import json
+        import sys
+        import fixtures
+        first = fixtures.pattern()
+        second = first.transpose(fixtures.Image.Transpose.FLIP_LEFT_RIGHT)
+        case = dict(suite='convert', format='gif', target='jxl', animation=True)
+        fake = SimpleNamespace(convert=lambda data, fmt: b'jxl')
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'input.gif').write_bytes(b'gif')
+            first.save(root / 'reference.png')
+            second.save(root / 'reference_frame1.png')
+            (root / 'prepared.json').write_text(json.dumps(dict(input='input.gif',
+                references=['reference.png', 'reference_frame1.png'])))
+            with patch.dict(sys.modules, {'sr_vulkan': SimpleNamespace(sr_vulkan=fake)}), \
+                    patch('fixtures.detect_format', return_value='jxl'):
+                for frames in ([first, second], [first], [first, first], [second, first]):
+                    with patch('fixtures._decode_jxl_frames', return_value=frames):
+                        if len(frames) == 2 and frames[0] is first and frames[1] is second:
+                            run_tests.worker(case, options(), root)
+                        else:
+                            with self.assertRaises(AssertionError):
+                                run_tests.worker(case, options(), root)
+
     def test_matrix(self):
         cases = run_tests.make_cases('all', ['MODEL_A', 'MODEL_A_TTA'])
         self.assertEqual(len({c['name'] for c in cases}), len(cases))

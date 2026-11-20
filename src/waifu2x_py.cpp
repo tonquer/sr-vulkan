@@ -356,6 +356,50 @@ waifu2x_py_add(PyObject* self, PyObject* args, PyObject* kwargs)
 
     return PyLong_FromLong(sts);
 }
+
+static PyObject*
+waifu2x_py_convert(PyObject* self, PyObject* args, PyObject* kwargs)
+{
+    const char* b = NULL;
+    Py_ssize_t size;
+    int sts = 1;
+    const char* format = NULL;
+    Py_ssize_t  width = 0;
+    Py_ssize_t  height = 0;
+    void* out = NULL;
+    unsigned long outSize = 0;
+
+    char* kwarg_names[] = { (char*)"data",(char*)"format", (char *)"width", (char *)"height", NULL };
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "y#s|ii", kwarg_names, &b, &size, &format, &width, &height))
+    {
+        waifu2x_set_error("invalid params");
+        Py_RETURN_NONE;
+    }
+        
+    //fprintf(stdout, "point:%p, size:%d, index:%d, back:%d, scale:%f \n", b, size, modelIndex, callBack, scale);
+    if (!b)
+    {
+        waifu2x_set_error("invalid data");
+        Py_RETURN_NONE;
+    }
+    //b = (unsigned char* )PyBytes_AsString((PyObject*)c);
+    unsigned char* data = NULL;
+
+    PyThreadState* save;
+    save = PyEval_SaveThread();
+    data = (unsigned char*)malloc(size);
+    memcpy(data, b, size);
+    sts = waifu2x_convert(data, size, format, width, height, out, outSize);
+    PyEval_RestoreThread(save);
+    if (sts <= 0)
+    {
+        Py_RETURN_NONE;
+    }
+    PyObject* py_bytes = PyBytes_FromStringAndSize(reinterpret_cast<const char*>(out), static_cast<Py_ssize_t>(outSize));
+    if (out) free(out);
+    return py_bytes;
+}
+
 static PyObject*
 waifu2x_py_get_info(PyObject* self, PyObject* args)
 {

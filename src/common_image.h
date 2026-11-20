@@ -4,6 +4,20 @@
 static void write_jpg_to_mem(void* writeData, void* data, int size)
 {
     WriteData* write = static_cast<WriteData*>(writeData);
+    if (write->capacity < write->writeSize + size) {
+        size_t new_capacity = write->capacity == 0 ? 4096 : write->capacity;
+        
+        while (new_capacity < write->writeSize + size) {
+            new_capacity *= 2;
+        }
+        // 注意：必须先用临时指针接收 realloc 返回值！
+        void* new_ptr = std::realloc(write->data, new_capacity);
+        if (!new_ptr) {
+            return;
+        }
+        write->data = static_cast<uint8_t*>(new_ptr);
+        write->capacity = new_capacity;
+    }
     memcpy((unsigned char*)write->data + write->writeSize, data, size);
     write->writeSize += size;
 }

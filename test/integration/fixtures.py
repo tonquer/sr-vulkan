@@ -148,7 +148,7 @@ def _jxl_library():
     return dll
 
 
-def _decode_jxl(data):
+def _decode_jxl_frames(data):
     # The plugin's info dimensions follow codestream orientation, even when its
     # Pillow image instead exposes the *unrotated reconstructed JPEG*.
     _, info, _, _, _ = pillow_jxl.Decoder(num_threads=0)(data)
@@ -169,7 +169,8 @@ def _decode_jxl(data):
         check(dll.JxlDecoderSubscribeEvents(decoder, 0x1000), "subscribe FULL_IMAGE")
         check(dll.JxlDecoderSetInput(decoder, source, len(data)), "set input")
         dll.JxlDecoderCloseInput(decoder)
-        for _ in range(16):
+        frames = []
+        while True:
             status = dll.JxlDecoderProcessInput(decoder)
             if status == 5:  # JXL_DEC_NEED_IMAGE_OUT_BUFFER
                 length = ctypes.c_size_t()
@@ -181,12 +182,20 @@ def _decode_jxl(data):
             elif status == 0x1000:  # JXL_DEC_FULL_IMAGE; default API applies orientation.
                 if pixels is None:
                     raise RuntimeError("JXL decoder returned a frame without pixels")
-                return Image.frombytes("RGB", size, pixels.raw)
+                frames.append(Image.frombytes("RGB", size, pixels.raw))
+                pixels = None
+            elif status == 0:  # SUCCESS means the complete animation was decoded.
+                if not frames:
+                    raise RuntimeError("JXL decoder returned no frames")
+                return frames
             else:
                 raise RuntimeError(f"JXL decode failed/incomplete: libjxl status {status}")
-        raise RuntimeError("JXL decoder did not finish")
     finally:
         dll.JxlDecoderDestroy(decoder)
+
+
+def _decode_jxl(data):
+    return _decode_jxl_frames(data)[0]
 
 
 def detect_format(data):
@@ -194,8 +203,14 @@ def detect_format(data):
     with Image.open(BytesIO(data)) as image:
         name = image.format
         if name == "PNG":
-            return "apng" if getattr(image, "is_animated", False) else "png"
-        mapping = {"JPEG": "jpg", "WEBP": "webp", "BMP": "bmp", "JXL": "jxl"}
+            position = 8
+            while position + 12 <= len(data):
+                length = int.from_bytes(data[position:position + 4], 'big')
+                if data[position + 4:position + 8] == b'acTL':
+                    return 'apng'
+                position += length + 12
+            return 'png'
+        mapping = {"JPEG": "jpg", "WEBP": "webp", "BMP": "bmp", "JXL": "jxl", "GIF": "gif"}
         if name not in mapping:
             raise ValueError(f"Unsupported image format: {name}")
         return mapping[name]
@@ -221,7 +236,7 @@ def decode_frames(data):
     non-animation default image is excluded from the returned animation frames.
     """
     if detect_format(data) == "jxl":
-        return [_decode_jxl(data)]
+        return _decode_jxl_frames(data)
     frames = []
     with Image.open(BytesIO(data)) as image:
         for index in range(int(image.info.get("default_image", False)), getattr(image, "n_frames", 1)):
@@ -401,7 +416,41 @@ def prepare(case, source, directory):
             'size': list(displays[0].size if auto else raw.size), 'actual_bits': actual_bits}
 
 
-def assert_reference(image, reference):
+def prepare_convert(case, source, directory):
+    """Prepare single-frame matrix inputs or explicit two-frame animation inputs."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    with Image.open(source) as opened:
+        image = ImageOps.exif_transpose(opened).convert('RGB')
+        image = image.resize((96, max(1, round(image.height * 96 / image.width))), Image.Resampling.LANCZOS)
+        image = Image.frombytes('RGB', image.size, image.tobytes())
+    fmt = case['format']
+    animation = case.get('animation', False)
+    buffer = BytesIO()
+    if fmt in ('gif', 'apng'):
+        frames = [image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)] if animation else []
+        image.save(buffer, format='GIF' if fmt == 'gif' else 'PNG', save_all=True,
+                   append_images=frames, duration=100, loop=0)
+        data = buffer.getvalue()
+    else:
+        data = _encode_source(image, fmt, 1, None)
+    filename = 'input.' + fmt
+    (directory / filename).write_bytes(data)
+    decoded = decode_frames(data)
+    assert len(decoded) == (2 if animation else 1), 'Wrong input frame count'
+    references = []
+    for index, frame in enumerate(decoded):
+        suffix = '_frame%d' % index if index else ''
+        for prefix in ('raw', 'display', 'reference'):
+            frame.save(directory / (prefix + suffix + '.png'))
+        references.append('reference' + suffix + '.png')
+    if case['target'] in ('jpg', 'png', 'bmp'):
+        references = references[:1]
+    return dict(input=filename, references=references, format=fmt, target=case['target'],
+                animation=animation, size=list(decoded[0].size))
+
+
+def assert_reference(image, reference, scale=2):
     """Require 2x size and source structure, rejecting rotation/mirror/gray output.
 
     No output EXIF is read or applied. Low-resolution comparisons tolerate SR
@@ -412,8 +461,8 @@ def assert_reference(image, reference):
             expected = opened.convert('RGB')
     else:
         expected = reference.convert('RGB')
-    assert image.size == (expected.width * 2, expected.height * 2), (
-        f'size {image.size}, expected {(expected.width * 2, expected.height * 2)}')
+    assert image.size == (expected.width * scale, expected.height * scale), (
+        f'size {image.size}, expected {(expected.width * scale, expected.height * scale)}')
     actual = image.convert('RGB').resize(expected.size, Image.Resampling.LANCZOS)
     # Blur-scale structure dampens ringing without throwing away source layout.
     size = (min(40, expected.width), min(40, expected.height))

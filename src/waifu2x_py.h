@@ -45,6 +45,9 @@ static PyObject*
 waifu2x_py_add(PyObject* self, PyObject* args, PyObject* kwargs);
 
 static PyObject*
+waifu2x_py_convert(PyObject* self, PyObject* args, PyObject* kwargs);
+
+static PyObject*
 waifu2x_py_load(PyObject* self, PyObject* args, PyObject* kwargs);
 
 static PyObject*
@@ -83,6 +86,8 @@ static PyMethodDef SpamMethods[] = {
      "set realcugan syncgap \ncan go from 1 (slot) to 3 (fast) \n"},
     {"add",  (PyCFunction)waifu2x_py_add, METH_VARARGS | METH_KEYWORDS,
      "Add task, \ndata: img bytes \nmodelIndex: Model enum \nbackId: call back id \nformat(Option): export fmt, default import fmt \nimport support bmp png jpg gif webp \nexport support bmp png jpg webp \nwidth(Option): export set width \nhigh(Option): export set high \nscale(Option): export set width and high \ntileSize(Option): default Auto\n"},
+    {"convert",  (PyCFunction)waifu2x_py_convert, METH_VARARGS | METH_KEYWORDS,
+     "convert picture format or size\n"},
     {"getGpuInfo",  (PyCFunction)waifu2x_py_get_info, METH_VARARGS,
      "Get gpu list\n"},
     {"getGpuCoreNum",  (PyCFunction)waifu2x_py_get_gpu_core, METH_VARARGS | METH_KEYWORDS,

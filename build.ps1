@@ -63,7 +63,7 @@ cmake `
       -DPYTHON_LIBRARY="$PYTHON_LIBRARIES" `
       -DCMAKE_VERBOSE_MAKEFILE=ON `
       ..\src
-cmake --build . --config Release
+cmake --build . --config Release -j
 Set-Location .\Release\
 
 $filePath = "sr_vulkan.pyd"

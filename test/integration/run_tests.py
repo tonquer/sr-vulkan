@@ -25,6 +25,15 @@ def model_files(root, name):
 
 def make_cases(suite, names):
     cases = []
+    if suite in ('all', 'convert'):
+        formats = ('jpg', 'png', 'bmp', 'jxl', 'webp', 'apng', 'gif')
+        cases += [dict(name='convert_{}_to_{}'.format(src, dst), suite='convert', format=src, target=dst)
+                  for src in formats for dst in formats]
+        cases += [dict(name='convert_animation_{}_to_{}'.format(src, dst), suite='convert',
+                       format=src, target=dst, animation=True)
+                  for src in ('gif', 'apng') for dst in ('jpg', 'png', 'bmp', 'webp', 'apng', 'gif')]
+        cases.append(dict(name='convert_animation_gif_to_jxl', suite='convert',
+                          format='gif', target='jxl', animation=True))
     if suite in ('all', 'formats'):
         cases += [dict(name='format_' + fmt, suite='formats', format=fmt, model=BASE_MODEL) for fmt in FORMATS]
     if suite in ('all', 'bitdepth'):
@@ -47,6 +56,32 @@ def worker(case, options, directory):
     from PIL import Image
     from sr_vulkan import sr_vulkan as sr
     prepared = json.loads((directory / 'prepared.json').read_text(encoding='utf-8'))
+    if case['suite'] == 'convert':
+        output = sr.convert((directory / prepared['input']).read_bytes(), case['target'])
+        if output is None:
+            raise AssertionError('convert returned None: ' + sr.getLastError())
+        assert isinstance(output, bytes) and output, 'convert returned empty or invalid bytes'
+        target = case['target']
+        (directory / ('output.' + target)).write_bytes(output)
+        actual = fixtures.detect_format(output)
+        assert actual == target, 'Wrong converted container: {} expected {}'.format(actual, target)
+        # Independently decode pixels without applying output EXIF.
+        if target == 'jxl':
+            frames = fixtures._decode_jxl_frames(output)
+        else:
+            frames = []
+            with Image.open(io.BytesIO(output)) as image:
+                for index in range(getattr(image, 'n_frames', 1)):
+                    image.seek(index)
+                    frames.append(image.convert('RGB'))
+        assert len(frames) == len(prepared['references']), 'Wrong converted frame count'
+        metrics = []
+        for index, (frame, reference) in enumerate(zip(frames, prepared['references'])):
+            frame.save(directory / ('output_{}.png'.format(index)))
+            metrics.append(fixtures.assert_reference(frame, directory / reference, scale=1))
+        details = dict(metrics=metrics, output_format=target, output_size=list(frames[0].size))
+        (directory / 'worker.json').write_text(json.dumps(details, indent=2), encoding='utf-8')
+        return
     if options.models:
         missing = [str(p) for p in model_files(options.models, case['model']) if not p.is_file()]
         assert not missing, 'Missing model files: ' + ', '.join(missing)
@@ -157,7 +192,7 @@ def main():
         print('Do not disable assertions with -O/PYTHONOPTIMIZE.', file=sys.stderr)
         return 1
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--suite', choices=('all', 'formats', 'bitdepth', 'orientation', 'models'), default='all')
+    parser.add_argument('--suite', choices=('all', 'convert', 'formats', 'bitdepth', 'orientation', 'models'), default='all')
     parser.add_argument('--source', default=str(Path(__file__).resolve().parent.parent / '0.jpg'))
     parser.add_argument('--models')
     parser.add_argument('--device', choices=('auto', 'cpu', 'gpu'), default='auto')
@@ -200,8 +235,11 @@ def main():
             base.resize((96, max(1, round(base.height * 96 / base.width))), Image.Resampling.LANCZOS).save(root / 'base.png')
         import fixtures
         # Model enumeration is pure Python; do not initialize native in parent.
-        from sr_vulkan import enum
-        cases = make_cases(options.suite, enum.AllModelNames)
+        names = []
+        if options.suite in ('all', 'models'):
+            from sr_vulkan import enum
+            names = enum.AllModelNames
+        cases = make_cases(options.suite, names)
         for case in cases:
             results.append(dict(name=case['name'], suite=case['suite'], directory=case['name'], status='pending',
                                 seconds=0, error='', case=case))
@@ -211,7 +249,8 @@ def main():
             directory = root / case['name']
             directory.mkdir()
             try:
-                metadata = fixtures.prepare(case, source, directory)
+                prepare = fixtures.prepare_convert if case['suite'] == 'convert' else fixtures.prepare
+                metadata = prepare(case, source, directory)
                 (directory / 'prepared.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
                 entry['metadata'] = metadata
                 runnable.append(case)

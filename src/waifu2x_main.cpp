@@ -64,7 +64,7 @@ int waifu2x_getData(void*& out, unsigned long& outSize, double& tick, int& callB
 
     v.out = NULL;
     strcpy(format, v.save_format.c_str());
-    tick = v.allTick;
+    tick = v.all_tick;
     return v.id;
 }
 
@@ -84,9 +84,10 @@ void* waifu2x_decode(void* args)
         {
             v.isSuc = false; Tosave.put(v); continue;
         }
-        ftime(&v.startTick);
+        struct timespec start;
+        timespec_get(&start, TIME_UTC);
         bool isSuc = to_load(v);
-        ftime(&v.decodeTick);
+        v.update_decode_ms(start);
         if (v.fileDate) {
             free(v.fileDate);
             v.fileDate = NULL;
@@ -94,7 +95,6 @@ void* waifu2x_decode(void* args)
         if (isSuc)
         {
             if (v.modelIndex < 0 && !v.inImage.empty()) {
-                ftime(&v.procTick);
                 if (v.toH <= 0 || v.toW <= 0)
                 {
                     v.toW = ceil(v.scale * v.inImage.front()->w);
@@ -126,17 +126,15 @@ void* waifu2x_encode(void* args)
             break;
         if (IsExitFlag)
             break;
+
+        struct timespec start;
+        timespec_get(&start, TIME_UTC);
         bool isSuc = to_save(v);
         v.clear_out_image();
-
-        ftime(&v.encodeTick);
-        double decodeTick = (v.decodeTick.time + v.decodeTick.millitm / 1000.0) - (v.startTick.time + v.startTick.millitm / 1000.0);
-        double procTick = (v.procTick.time + v.procTick.millitm / 1000.0) - (v.decodeTick.time + v.decodeTick.millitm / 1000.0);
-        double encodeTick = (v.encodeTick.time + v.encodeTick.millitm / 1000.0) - (v.procTick.time + v.procTick.millitm / 1000.0);
-        double allTick = (v.encodeTick.time + v.encodeTick.millitm / 1000.0) - (v.startTick.time + v.startTick.millitm / 10000.0);
-        v.allTick = allTick;
+        v.update_encode_ms(start);
+        v.update_all_ms();
         waifu2x_printf(stdout, "[SR_VULKAN] end encode imageId :%d, decode:%.2fs, proc:%.2fs, encode:%.2fs, \n",
-            v.callBack, decodeTick, procTick, encodeTick);
+            v.callBack, v.decode_tick, v.proc_tick, v.encode_tick);
 
         if (isSuc)
         {
@@ -158,6 +156,9 @@ void* waifu2x_encode(void* args)
 }
 void* waifu2x_process_data(Task &v, const SuperResolution* waifu2x, LoadThreadParams* ltp)
 {
+    struct timespec start;
+    timespec_get(&start, TIME_UTC);
+
     const char* name;
     if (GpuId >= 0)
         name = ncnn::get_gpu_info(GpuId).device_name();
@@ -232,7 +233,7 @@ void* waifu2x_process_data(Task &v, const SuperResolution* waifu2x, LoadThreadPa
         v.outImage.push_back(outimage);
 
     }
-    ftime(&v.procTick);
+    v.update_proc_ms(start);
     v.clear_in_image();
     Toencode.put(v);
     return NULL;
@@ -1187,6 +1188,54 @@ int waifu2x_addData(const unsigned char* data, unsigned int size, int callBack, 
     {
         Todecode.put(v);
         return v.id;
+    }
+
+    waifu2x_set_error("invalid pictrue format");
+    return -1;
+}
+
+int waifu2x_convert(const unsigned char* data, unsigned int size, const char* format, unsigned long toW, unsigned long toH, void*& out, unsigned long& outSize)
+{
+    Task v;
+    AutoTaskId ++;
+    bool isSuc = false;
+    v.id = AutoTaskId;
+    v.fileDate = (void*)data;
+    v.fileSize = size;
+    v.toH = toH;
+    v.toW = toW;
+    v.webp_quality = GlobalWebpQuality;
+    v.auto_transfom = GlobalAutoTransform;
+    if (format) v.save_format = format;
+    
+    transform(v.save_format.begin(), v.save_format.end(), v.save_format.begin(), ::tolower);
+    if (v.save_format.length() == 0 || !v.save_format.compare("jpg") || !v.save_format.compare("jpeg") || 
+    !v.save_format.compare("png") || !v.save_format.compare("webp") || !v.save_format.compare("jpg") || 
+    !v.save_format.compare("bmp") || !v.save_format.compare("apng") || !v.save_format.compare("jxl"))
+    {
+        
+        isSuc = to_load(v);
+        if (v.fileDate) {
+            free(v.fileDate);
+            v.fileDate = NULL;
+        }
+        if (! isSuc) {
+            waifu2x_set_error("decode pictrue error");            
+            return -1;
+        }
+        v.outImage = std::move(v.inImage);
+        v.inImage.clear();
+
+        isSuc = to_save(v);
+        v.clear_in_image();
+        v.clear_out_image();
+        if (!isSuc) {
+            waifu2x_set_error(v.err.c_str());
+            return -1;
+        }
+        out = v.out;
+        outSize = v.outSize;
+        return 1;
     }
 
     waifu2x_set_error("invalid pictrue format");
