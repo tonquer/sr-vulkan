@@ -6,6 +6,7 @@
 #include <cmath>
 #include <atomic>
 #include <csignal>
+#include <thread>
 
 static TaskQueue Todecode;
 static TaskQueue Toproc;
@@ -255,11 +256,6 @@ void* waifu2x_proc(void* args)
         int sts = waifu2x_check_init_model(v.modelIndex, ltp);
         if (sts < 0)
         {
-            waifu2x_set_error("load model fail");
-            if (sts == Waifu2xError::NotModel)
-            {
-                waifu2x_set_error("invalid model index");
-            }
             v.err = waifu2x_get_error();
             v.isSuc = false;
             Tosave.put(v);
@@ -410,12 +406,14 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     {
         waifu2x_printf(stderr, L"[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, parampath);
         waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_waifu2x\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_waifu2x!");
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t *)modelpath, &buffer) != 0)
     {
         waifu2x_printf(stderr, L"[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, modelpath);
         waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_waifu2x\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_waifu2x!");
         return Waifu2xError::NotModel;
     }
 #else
@@ -425,12 +423,14 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     {
         waifu2x_printf(stderr, "[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, parampath);
         waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_waifu2x\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_waifu2x!");
         return Waifu2xError::NotModel;
     }
     if (stat((char *)modelpath, &buffer) != 0)
     {
         waifu2x_printf(stderr, "[SR_VULKAN] thread:%d, ot found path %s\n", ltp->thread_id, modelpath);
         waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_waifu2x\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_waifu2x!");
         return Waifu2xError::NotModel;
     }
 #endif
@@ -506,12 +506,14 @@ int realcugan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mo
     {
         waifu2x_printf(stderr, L"[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, parampath);
         waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realcugan\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realcugan!");
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t*)modelpath, &buffer) != 0)
     {
         waifu2x_printf(stderr, L"[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, modelpath);
         waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realcugan\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realcugan!");
         return Waifu2xError::NotModel;
     }
 #else
@@ -521,12 +523,14 @@ int realcugan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mo
     {
         waifu2x_printf(stderr, "[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, parampath);
         waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realcugan\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realcugan!");
         return Waifu2xError::NotModel;
     }
     if (stat((char*)modelpath, &buffer) != 0)
     {
         waifu2x_printf(stderr, "[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, modelpath);
         waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realcugan\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realcugan!");
         return Waifu2xError::NotModel;
     }
 #endif
@@ -648,12 +652,14 @@ int realsr_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode,
     {
         waifu2x_printf(stderr, L"[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, parampath);
         waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realsr\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realsr!");
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t*)modelpath, &buffer) != 0)
     {
         waifu2x_printf(stderr, L"[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, modelpath);
         waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realsr\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realsr!");
         return Waifu2xError::NotModel;
     }
 #else
@@ -663,12 +669,14 @@ int realsr_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode,
     {
         waifu2x_printf(stderr, "[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, parampath);
         waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realsr\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realsr!");
         return Waifu2xError::NotModel;
     }
     if (stat((char*)modelpath, &buffer) != 0)
     {
         waifu2x_printf(stderr, "[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, modelpath);
         waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realsr\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realsr!");
         return Waifu2xError::NotModel;
     }
 #endif
@@ -757,12 +765,14 @@ int realesrgan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_m
     {
         waifu2x_printf(stderr, L"[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, parampath);
         waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realesrgan\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realesrgan!");
         return Waifu2xError::NotModel;
     }
     if (_wstat((wchar_t*)modelpath, &buffer) != 0)
     {
         waifu2x_printf(stderr, L"[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, modelpath);
         waifu2x_printf(stderr, L"[SR_VULKAN] please use pip install sr_vulkan_model_realesrgan\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realesrgan!");
         return Waifu2xError::NotModel;
     }
 #else
@@ -772,12 +782,14 @@ int realesrgan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_m
     {
         waifu2x_printf(stderr, "[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, parampath);
         waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realesrgan\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realesrgan!");
         return Waifu2xError::NotModel;
     }
     if (stat((char*)modelpath, &buffer) != 0)
     {
         waifu2x_printf(stderr, "[SR_VULKAN] thread:%d, not found path %s\n", ltp->thread_id, modelpath);
         waifu2x_printf(stderr, "[SR_VULKAN] please use pip install sr_vulkan_model_realesrgan\n");
+        waifu2x_set_error("invalid model index, please use pip install sr_vulkan_model_realesrgan!");
         return Waifu2xError::NotModel;
     }
 #endif
@@ -913,7 +925,7 @@ int waifu2x_init_set(int gpuId2, int cpuNum)
         return -1;
     }
     
-    std::signal(SIGINT, signal_handler);
+    // std::signal(SIGINT, signal_handler);
 
     if (TotalJobsDecode <= 0) { TotalJobsDecode = 1; }
     if (TotalJobsEncode <= 0) { TotalJobsEncode = 1; }
@@ -1016,6 +1028,7 @@ int waifu2x_check_init_model(int initModel, LoadThreadParams* ltp)
     std::lock_guard<std::mutex> lock(g_load_model);
     if (initModel < 0 || initModel >= (int)ltp->get_max_size())
     {
+        waifu2x_set_error("invalid model index");
         return Waifu2xError::NotModel;
     }
     int scale = 1;
@@ -1107,7 +1120,7 @@ int waifu2x_check_init_model(int initModel, LoadThreadParams* ltp)
 #else
             waifu2x_printf(stderr, "[SR_VULKAN] RealESRGAN not support cpu model \n");
 #endif
-            waifu2x_set_error("[SR_VULKAN] RealESRGAN not support cpu model");
+            waifu2x_set_error("RealESRGAN not support cpu model");
             return Waifu2xError::NotSupport;
         }
         return realesrgan_addModel(name.c_str(), scale, noise, tta, NumThreads, initModel, ltp);
@@ -1258,7 +1271,8 @@ int waifu2x_stop()
         Tosave.broadcast();
         Toencode.broadcast();
         Todecode.broadcast();
-        ncnn::Thread t = ncnn::Thread(waifu2x_to_stop);
+        //ncnn::Thread t = ncnn::Thread(waifu2x_to_stop);
+        std::thread(waifu2x_to_stop, nullptr).detach();
     }
     return 0;
 }

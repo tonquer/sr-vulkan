@@ -500,7 +500,10 @@ waifu2x_py_stop(PyObject* self, PyObject* args, PyObject* kwargs)
     //    Py_RETURN_NONE;
     IsInit = false;
     IsInitSet = false;
+    PyThreadState* save;
+    save = PyEval_SaveThread();
     int sts = waifu2x_stop();
+    PyEval_RestoreThread(save);
     return PyLong_FromLong(sts);
 }
 

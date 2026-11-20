@@ -1,6 +1,6 @@
 
 # Include the README
-include *.md
+include *.md build_mac.sh
 
 # Include the license file
 include LICENSE
@@ -15,3 +15,7 @@ recursive-include sr_vulkan *.bin
 recursive-include sr_vulkan *.param
 recursive-include src *
 recursive-include VulkanSDK *
+recursive-include test *
+
+prune test/integration/results
+prune test/integration/__pycache__

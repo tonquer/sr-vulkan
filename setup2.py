@@ -9,11 +9,14 @@ long_description = \
 # sr-vulkan
 - This is modified [waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan), [realsr-ncnn-vulkan](https://github.com/nihui/realsr-ncnn-vulkan) [realcugan-ncnn-vulkan](https://github.com/nihui/realcugan-ncnn-vulkan) [xinntao/Real-ESRGAN-ncnn-vulkan](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan/), Export pyd and so files to Python
 - Support Linux, Windows, MacOs
-- Support import JPG, PNG, BMP, GIF, WEBP, Animated WEBP, APNG
-- Support export JPG, PNG, BMP, WEBP, Animated WEBP, APNG
+- Support import JPG, PNG, BMP, GIF, WEBP, Animated WEBP, APNG, JPEG XL
+- Support export JPG, PNG, BMP, WEBP, Animated WEBP, APNG, JPEG XL
 - Support vulkan gpu and cpu
 
 # Install
+see test/demo_*
+
+
 ```shell
 pip install sr-vulkan -v
 ```

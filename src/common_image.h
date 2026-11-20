@@ -1,5 +1,7 @@
 #ifndef COMMON_IMAGE_H
 #define COMMON_IMAGE_H
+#include <cstring>
+
 
 static void write_jpg_to_mem(void* writeData, void* data, int size)
 {

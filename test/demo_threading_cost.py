@@ -83,6 +83,9 @@ def main():
             processNum += 1
             print('已提交：taskId={}，backId={}'.format(taskId, back_id), flush=True)
 
+        for i in range(threadNum):
+            tasks.put(None)
+            
     finally:
         baseCost = 0
         while processNum > 0:

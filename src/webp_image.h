@@ -4,6 +4,7 @@
 // webp image decoder and encoder with libwebp
 #include <stdio.h>
 #include <stdlib.h>
+#include <cstring>
 #include "webp/decode.h"
 #include "webp/encode.h"
 #include "webp/demux.h"
@@ -14,8 +15,7 @@ bool load_webp(Task &v)
 {
     uint8_t* pixeldata = 0;
     uint8_t * finalPixeldata = 0;
-    // 1. 使用 WebPDemux 检查动画与 EXIF 方向（零拷贝包装内存）
-    WebPData webp_data = { (const uint8_t*)v.fileDate, v.fileSize};
+    WebPData webp_data = { (const uint8_t*)v.fileDate, static_cast<size_t>(v.fileSize)};
     WebPDemuxer* demux = WebPDemux(&webp_data);
     if (!demux)
         return false;
@@ -35,7 +35,6 @@ bool load_webp(Task &v)
         {
             const uint8_t* exif_bytes = chunk_iter.chunk.bytes;
             size_t exif_size = chunk_iter.chunk.size;
-            // 兼容部分非标准工具误写入的 "Exif\0\0" 6字节前缀
             if (exif_size > 6 && std::memcmp(exif_bytes, "Exif\0\0", 6) == 0)
             {
                 exif_bytes += 6;
@@ -47,7 +46,6 @@ bool load_webp(Task &v)
     }
     WebPDemuxDelete(demux);
 
-    // 2. 初始化解码配置并获取图像特征
     WebPDecoderConfig config;
     if (!WebPInitDecoderConfig(&config))
         return false;
@@ -72,9 +70,8 @@ bool load_webp(Task &v)
     config.output.u.RGBA.rgba = pixeldata;
     config.output.is_external_memory = 1;
 
-    // 3. 执行解码
     VP8StatusCode code = WebPDecode((uint8_t*)v.fileDate, v.fileSize, &config);
-    WebPFreeDecBuffer(&config.output); // 清理内部状态（不会释放 external_memory）
+    WebPFreeDecBuffer(&config.output);
 
     if (code != VP8_STATUS_OK)
     {

@@ -82,6 +82,9 @@ def main():
             processNum += 1
             print('已提交：taskId={}，backId={}'.format(taskId, back_id), flush=True)
 
+        for i in range(threadNum):
+            tasks.put(None)
+            
     finally:
         while processNum > 0:
             back_id = main_tasks.get()

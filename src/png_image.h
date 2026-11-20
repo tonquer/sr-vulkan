@@ -292,7 +292,7 @@ int spng_save_memery(Task& v, int w, int h, int c, const unsigned char* pixeldat
         if (!png_data || ret != SPNG_OK) {
             spng_ctx_free(ctx);
             v.err = spng_strerror(ret);
-            return NULL;
+            return 0;
         }
         v.out = png_data;
         v.outSize = out_png_size;

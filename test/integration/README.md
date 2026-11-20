@@ -16,19 +16,19 @@ python -B -m unittest discover -s integration -p "test_*.py" -v
 python -B integration/run_tests.py --suite convert
 
 # 六格式同格式输入/输出，APNG真两帧
-python -B integration/run_tests.py --suite formats --models models
+python -B integration/run_tests.py --suite formats
 
 # 高位深输入兼容性，允许输出8bit
-python -B integration/run_tests.py --suite bitdepth --models models
+python -B integration/run_tests.py --suite bitdepth 
 
 # 四格式8方向，自动方向开启/关闭对照
-python -B integration/run_tests.py --suite orientation --models models
+python -B integration/run_tests.py --suite orientation
 
 # 全枚举模型（含TTA），最多8个native子进程
-python -B integration/run_tests.py --suite models --models models --jobs 8 --timeout 600
+python -B integration/run_tests.py --suite models --jobs 8 --timeout 600
 
 # 完整测试与可视化报告
-python -B integration/run_tests.py --suite all --models models --jobs 8 --timeout 600
+python -B integration/run_tests.py --suite all --jobs 8 --timeout 600
 ```
 
 省略 `--models` 时使用扩展的默认模型包路径。`--source <图片>` 可替换默认 `0.jpg`。任一目录参数均转成绝对路径，不依赖脚本中修改cwd。不要在整个 `test/` 下全局收集旧脚本：旧样本生成器存在import时读写图片的行为。

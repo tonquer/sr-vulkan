@@ -68,11 +68,12 @@ if __name__ == "__main__":
         info = sr.load(0)
         if info:
             newData, foramt, callBackId, tick = info
-            # backId == callBackId
-
-            f = open(str(callBackId) + "." + foramt, "wb+")
-            f.write(newData)
-            f.close()
+            if not newData:
+                print("sr error, {}".format(sr.getLastError()))
+            else:
+                f = open(str(callBackId) + "." + foramt, "wb+")
+                f.write(newData)
+                f.close()
         else:
             print("sr error, {}".format(sr.getLastError()))
     else:

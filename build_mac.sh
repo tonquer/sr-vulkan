@@ -42,6 +42,11 @@ fi
 
 export VULKAN_SDK=`pwd`/MoltenVK/MoltenVK
 
+PY_INC=$(python3 -c "import sysconfig; print(sysconfig.get_path('include'))")
+echo $PY_INC
+# -DPython3_EXECUTABLE="$(which python3)" \
+# -DPython3_INCLUDE_DIR="/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Headers" \
+
 OPENMP_INCLUDE=`pwd`/openmp-11.0.0.src/build/install/include
 OPENMP_LIB=`pwd`/openmp-11.0.0.src/build/install/lib/libomp.a
 cp $OPENMP_INCLUDE/* $VULKAN_SDK/../MoltenVK/include
@@ -74,6 +79,8 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DNCNN_BUILD_EXAMPLES=OFF \
       -DUSE_STATIC_MOLTENVK=ON \
       -DCMAKE_OSX_ARCHITECTURES="x86_64" \
+      -DCMAKE_SYSTEM_PROCESSOR="x86_64" \
+      -DCMAKE_SYSTEM_NAME="Darwin" \
       -DOpenMP_C_FLAGS="-Xclang -fopenmp" \
       -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
       -DOpenMP_C_LIB_NAMES="libomp"\
@@ -97,9 +104,11 @@ cmake -DCMAKE_BUILD_TYPE=Release \
       -DNCNN_BUILD_EXAMPLES=OFF \
       -DUSE_STATIC_MOLTENVK=ON \
       -DCMAKE_OSX_ARCHITECTURES="arm64" \
+      -DCMAKE_SYSTEM_PROCESSOR="arm64" \
+      -DCMAKE_SYSTEM_NAME="Darwin" \
       -DOpenMP_C_FLAGS="-Xclang -fopenmp" \
       -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
-      -DOpenMP_C_LIB_NAMES="libomp"\
+      -DOpenMP_C_LIB_NAMES="libomp" \
       -DOpenMP_CXX_LIB_NAMES="libomp" \
       -DOpenMP_libomp_LIBRARY=$OPENMP_LIB \
       -DPNG_ARM_NEON=off \
