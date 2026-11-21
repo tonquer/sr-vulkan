@@ -19,3 +19,7 @@ recursive-include test *
 
 prune test/integration/results
 prune test/integration/__pycache__
+prune src/ncnn/examples
+prune src/libjxl/testdata
+prune src/libjxl/third_party/brotli/js
+prune src/libjxl/third_party/brotli/tests
