@@ -42,18 +42,18 @@ class Task
 public:
     int id = 0;
 
-    void* fileDate;
-    int fileSize;
-    int allFileSize=0;
+    void* fileDate = NULL;
+    int fileSize = 0;
+    int allFileSize = 0;
     std::string load_format;
     std::string save_format;
     std::string err;
     bool isSuc = true;
 
     int callBack = 0;
-    int modelIndex;
-    unsigned long toW;
-    unsigned long toH;
+    int modelIndex = 0;
+    unsigned long toW = 0;
+    unsigned long toH = 0;
     float scale = 2;
     int tileSize = 0;
     int webp_quality = 100;
@@ -113,6 +113,21 @@ public:
            delete *in;
         }
         this->outImage.clear();
+    }
+    void clear_all()
+    {
+        if (this->fileDate)
+        {
+            free(this->fileDate);
+            this->fileDate = NULL;
+        }
+        if (this->out)
+        {
+            free(this->out);
+            this->out = NULL;
+        }
+        this->clear_in_image();
+        this->clear_out_image();
     }
 };
 
@@ -217,7 +232,9 @@ public:
     }
     
     void broadcast() {
+        lock.lock();
         condition.broadcast();
+        lock.unlock();
     }
 
 private:
@@ -241,6 +258,14 @@ public:
     }
 
     ~LoadThreadParams() {
+        for (size_t i = 0; i < waifu2xList.size(); i++)
+            delete waifu2xList[i];
+        for (size_t i = 0; i < realCuganList.size(); i++)
+            delete realCuganList[i];
+        for (size_t i = 0; i < realSrList.size(); i++)
+            delete realSrList[i];
+        for (size_t i = 0; i < realEsrganList.size(); i++)
+            delete realEsrganList[i];
         waifu2xList.clear();
         realCuganList.clear();
         realSrList.clear();
@@ -296,19 +321,41 @@ public:
     size_t capacity = 0;
     size_t writeSize = 0;
     void *data = NULL;
+    bool failed = false;
     WriteData(int h, int w, int n)
     {
-        size_t row_stride = ((static_cast<size_t>(w) * n + 3) / 4) * 4;
+        if (h <= 0 || w <= 0 || n <= 0)
+        {
+            failed = true;
+            return;
+        }
+        size_t row_stride = ((static_cast<size_t>(w) * static_cast<size_t>(n) + 3) / 4) * 4;
+        if (row_stride > 0 && static_cast<size_t>(h) > (SIZE_MAX - 118) / row_stride)
+        {
+            failed = true;
+            return;
+        }
         capacity = 54 + row_stride * static_cast<size_t>(h) + 64;
         data = malloc(capacity);
+        if (!data)
+        {
+            capacity = 0;
+            failed = true;
+        }
+    }
+    void* detach()
+    {
+        void* p = data;
+        data = NULL;
+        capacity = 0;
+        return p;
     }
     ~WriteData()
     {
-        free(data);
+        if (data)
+            free(data);
         data = NULL;
     }
-
-
 };
 
 static const std::string AllModel[] =

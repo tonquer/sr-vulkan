@@ -1,272 +1,398 @@
 #ifndef JXL_IMAGE_H
 #define JXL_IMAGE_H
 
-#define JXL_STATIC_DEFINE // 必须在 include 之前定义
-#include <iostream>
-#include <fstream>
-#include <vector>
+#define JXL_STATIC_DEFINE
+#include <cstdlib>
 #include <cstdint>
+#include <cstring>
+#include <climits>
 #include <jxl/decode.h>
 #include <jxl/encode.h>
 
+bool load_jxl(Task& v)
+{
+    if (!v.fileDate || v.fileSize <= 0)
+        return false;
 
-// 通用解码函数
-bool load_jxl(Task& v) {
-    // 1. 初始化解码器
+    const uint8_t* raw_data = static_cast<const uint8_t*>(v.fileDate);
+    size_t raw_size = static_cast<size_t>(v.fileSize);
+    JxlSignature sig = JxlSignatureCheck(raw_data, raw_size);
+    if (sig != JXL_SIG_CODESTREAM && sig != JXL_SIG_CONTAINER)
+        return false;
+
     JxlDecoder* dec = JxlDecoderCreate(NULL);
-    if (!dec) return false;
+    if (!dec)
+        return false;
 
-
-    // 3. 关键：同时订阅 BASIC_INFO、FRAME（用于获取帧时间）、FULL_IMAGE（一帧完成）
     const int events = JXL_DEC_BASIC_INFO | JXL_DEC_FRAME | JXL_DEC_FULL_IMAGE;
-    if (JxlDecoderSubscribeEvents(dec, events) != JXL_DEC_SUCCESS) {
+    if (JxlDecoderSubscribeEvents(dec, events) != JXL_DEC_SUCCESS)
+    {
         JxlDecoderDestroy(dec);
         return false;
     }
-    
-    if (v.auto_transfom) {
-        JxlDecoderSetKeepOrientation(dec, JXL_FALSE);
-    } else {
-        JxlDecoderSetKeepOrientation(dec, JXL_TRUE);
+
+    if (JxlDecoderSetKeepOrientation(dec, v.auto_transfom ? JXL_FALSE : JXL_TRUE) != JXL_DEC_SUCCESS)
+    {
+        JxlDecoderDestroy(dec);
+        return false;
     }
 
-    JxlDecoderSetInput(dec, (const uint8_t *)v.fileDate, v.fileSize);
+    if (JxlDecoderSetInput(dec, raw_data, raw_size) != JXL_DEC_SUCCESS)
+    {
+        JxlDecoderDestroy(dec);
+        return false;
+    }
     JxlDecoderCloseInput(dec);
-    // 固定以 4 通道 8-bit RGBA 像素格式输出
+
     JxlPixelFormat format = {
-        4,                  // 4 通道 (RGBA)
-        JXL_TYPE_UINT8,     // 8 位无符号整数
-        JXL_NATIVE_ENDIAN,  // 小端序
-        0                   // align
+        3,
+        JXL_TYPE_UINT8,
+        JXL_NATIVE_ENDIAN,
+        0
     };
     JxlBasicInfo info;
+    std::memset(&info, 0, sizeof(info));
     JxlFrameHeader frame_header;
     size_t frame_buffer_size = 0;
-    int duration_ms = 0;
-    size_t channels = 4;
-    uint32_t current_width = 0;
-    uint32_t current_height = 0;
-    bool current_is_animation = false;
-    ncnn::Mat *current_frame = NULL;
-    JxlDecoderStatus status;
-
+    size_t channels = 3;
+    int duration_ms = 100;
+    bool has_basic_info = false;
+    bool is_animation = false;
+    ncnn::Mat* current_frame = NULL;
     bool success = false;
-    // 4. 事件状态机主循环
-    for (;;) {
-        status = JxlDecoderProcessInput(dec);
-        if (status == JXL_DEC_ERROR) {
+
+    for (;;)
+    {
+        JxlDecoderStatus status = JxlDecoderProcessInput(dec);
+        if (status == JXL_DEC_ERROR)
+        {
             break;
-        } 
-        else if (status == JXL_DEC_NEED_MORE_INPUT) {
+        }
+        else if (status == JXL_DEC_NEED_MORE_INPUT)
+        {
             v.err = "jxl decode data fail!";
             break;
-        } 
-        else if (status == JXL_DEC_BASIC_INFO) {
-            // 获取画面的全局信息
-            if (JxlDecoderGetBasicInfo(dec, &info) != JXL_DEC_SUCCESS) break;
-            current_width = info.xsize;
-            current_height = info.ysize;
-            current_is_animation = (info.have_animation == JXL_TRUE);
+        }
+        else if (status == JXL_DEC_BASIC_INFO)
+        {
+            if (JxlDecoderGetBasicInfo(dec, &info) != JXL_DEC_SUCCESS)
+                break;
 
-
-            // 计算单帧 RGBA Buffer 的字节大小 (w * h * 4)
-            if (JxlDecoderImageOutBufferSize(dec, &format, &frame_buffer_size) != JXL_DEC_SUCCESS) {
+            if (info.xsize == 0 || info.ysize == 0 ||
+                info.xsize > static_cast<uint32_t>(INT_MAX) ||
+                info.ysize > static_cast<uint32_t>(INT_MAX))
+            {
                 break;
             }
-        } 
-        else if (status == JXL_DEC_FRAME) {
-            // 每次准备解码新的一帧时触发（静态图只触发 1 次，动图触发 N 次）
-            if (current_is_animation) {
-                if (JxlDecoderGetFrameHeader(dec, &frame_header) == JXL_DEC_SUCCESS) {
-                    // JXL 规范中时间换算公式：duration (秒) = duration_ticks * (tps_denominator / tps_numerator)
-                    // 换算成毫秒: duration_ticks * 1000 * tps_denominator / tps_numerator
-                    duration_ms = (int)((double)frame_header.duration * 1000.0 * 
-                                         (double)info.animation.tps_denominator / 
-                                         (double)info.animation.tps_numerator);
+
+            is_animation = (info.have_animation == JXL_TRUE);
+            channels = (info.alpha_bits > 0) ? 4 : 3;
+            format.num_channels = static_cast<uint32_t>(channels);
+
+            if (JxlDecoderImageOutBufferSize(dec, &format, &frame_buffer_size) != JXL_DEC_SUCCESS)
+                break;
+
+            size_t expected_size = static_cast<size_t>(info.xsize) * static_cast<size_t>(info.ysize) * channels;
+            if (frame_buffer_size == 0 || frame_buffer_size > expected_size)
+                break;
+
+            has_basic_info = true;
+        }
+        else if (status == JXL_DEC_FRAME)
+        {
+            if (!has_basic_info)
+                break;
+
+            if (is_animation)
+            {
+                if (JxlDecoderGetFrameHeader(dec, &frame_header) == JXL_DEC_SUCCESS &&
+                    info.animation.tps_numerator > 0)
+                {
+                    duration_ms = static_cast<int>(
+                        static_cast<double>(frame_header.duration) * 1000.0 *
+                        static_cast<double>(info.animation.tps_denominator) /
+                        static_cast<double>(info.animation.tps_numerator));
+                    if (duration_ms < 0)
+                        duration_ms = 0;
                 }
-            } else {
+                else
+                {
+                    duration_ms = 100;
+                }
+            }
+            else
+            {
                 duration_ms = 100;
             }
 
+            if (current_frame)
+            {
+                delete current_frame;
+                current_frame = NULL;
+            }
+
             current_frame = new ncnn::Mat();
-            current_frame->create(info.xsize, info.ysize, (size_t)channels, (int)channels);
-            v.inImage.push_back(current_frame);
-            v.inFrame.push_back(duration_ms);
-        } 
-        else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER) {
-            // 把当前帧的内存首地址提供给 libjxl 写入渲染数据
-            if (JxlDecoderSetImageOutBuffer(dec, &format, (uint8_t *)current_frame->data, info.xsize * info.ysize * channels) != JXL_DEC_SUCCESS) {
+            current_frame->create(static_cast<int>(info.xsize), static_cast<int>(info.ysize), channels, static_cast<int>(channels));
+            if (current_frame->empty())
+            {
+                delete current_frame;
+                current_frame = NULL;
                 break;
             }
-        } 
-        else if (status == JXL_DEC_FULL_IMAGE) {
-            // 当前帧解码渲染完成，放入帧列表
-            current_frame = NULL; // 重置为下一帧做准备
-        } 
-        else if (status == JXL_DEC_SUCCESS) {
-            // 所有帧全部解码完毕
+        }
+        else if (status == JXL_DEC_NEED_IMAGE_OUT_BUFFER)
+        {
+            if (!current_frame || current_frame->empty())
+                break;
+
+            if (JxlDecoderSetImageOutBuffer(dec, &format, current_frame->data, frame_buffer_size) != JXL_DEC_SUCCESS)
+                break;
+        }
+        else if (status == JXL_DEC_FULL_IMAGE)
+        {
+            if (current_frame)
+            {
+                v.inImage.push_back(current_frame);
+                v.inFrame.push_back(duration_ms);
+                current_frame = NULL;
+            }
+        }
+        else if (status == JXL_DEC_SUCCESS)
+        {
             success = true;
             break;
         }
     }
+
+    if (current_frame)
+    {
+        delete current_frame;
+        current_frame = NULL;
+    }
     JxlDecoderDestroy(dec);
+
     if (success && !v.inImage.empty())
     {
         if (v.save_format.length() == 0) v.save_format = "jxl";
         v.load_format = "jxl";
         return true;
-    } else
-    {
-        return false;
     }
+
+    v.clear_in_image();
+    v.inFrame.clear();
+    return false;
 }
 
-
-// 通用编码主函数
-bool jxl_save(Task& v) {
-    if (v.outImage.empty()) {
-        v.err = "epmty outimage";
+bool jxl_save(Task& v)
+{
+    if (v.outImage.empty())
+    {
+        v.err = "empty outimage";
         return false;
     }
-    JxlEncoderStatus status;
-    bool is_animation = (v.outImage.size() > 1);
-    // 1. 创建编码器实例
-    JxlEncoder* enc = JxlEncoderCreate(NULL);
-    if (!enc) return false;
-    ncnn::Mat& first = **v.outImage.begin();
-    // 画质参数 (Butteraugli 距离):
-    // 0.0f = 数学无损 (Lossless)
-    // 1.0f = 视觉无损 (Visually Lossless，体积小质量极高，推荐默认)
-    // 2.0f~3.0f = 略微有损 (高压缩比)
-    float distance = 1.0f;
-    
-    // 编码速度努力程度 (1 ~ 9): 1 最快，7 默认推荐，9 压缩率极致但较慢
-    int effort = 7;
 
-    // 3. 配置全局 BasicInfo
+    ncnn::Mat* first_ptr = *v.outImage.begin();
+    if (!first_ptr || first_ptr->empty() || first_ptr->w <= 0 || first_ptr->h <= 0 ||
+        (first_ptr->elemsize != 3 && first_ptr->elemsize != 4))
+    {
+        v.err = "invalid outimage";
+        return false;
+    }
+
+    const int width = first_ptr->w;
+    const int height = first_ptr->h;
+    const size_t channels = first_ptr->elemsize;
+
+    for (std::list<ncnn::Mat*>::iterator it = v.outImage.begin(); it != v.outImage.end(); ++it)
+    {
+        if (!*it || (*it)->empty() || (*it)->w != width || (*it)->h != height || (*it)->elemsize != channels)
+        {
+            v.err = "inconsistent jxl frame dimensions";
+            return false;
+        }
+    }
+
+    bool is_animation = (v.outImage.size() > 1);
+    JxlEncoder* enc = JxlEncoderCreate(NULL);
+    if (!enc)
+        return false;
+
+    const float distance = 1.0f;
+    const int effort = 7;
+
     JxlBasicInfo basic_info;
     JxlEncoderInitBasicInfo(&basic_info);
-    basic_info.xsize = first.w;
-    basic_info.ysize = first.h;
+    basic_info.xsize = static_cast<uint32_t>(width);
+    basic_info.ysize = static_cast<uint32_t>(height);
     basic_info.bits_per_sample = 8;
     basic_info.uses_original_profile = JXL_FALSE;
     basic_info.num_color_channels = 3;
-    basic_info.alpha_bits = first.elemsize > 3 ? 8 : 0;
-    basic_info.num_extra_channels = first.elemsize > 3 ? 1 : 0;
-    // 动图特有配置
-    if (is_animation) {
+    basic_info.alpha_bits = (channels == 4) ? 8 : 0;
+    basic_info.num_extra_channels = (channels == 4) ? 1 : 0;
+    if (is_animation)
+    {
         basic_info.have_animation = JXL_TRUE;
-        // 使用毫秒作为时钟基准: tps_numerator = 1000, tps_denominator = 1 (1 秒 = 1000 ticks)
         basic_info.animation.tps_numerator = 1000;
         basic_info.animation.tps_denominator = 1;
         basic_info.animation.num_loops = 0;
         basic_info.animation.have_timecodes = JXL_FALSE;
-    } else {
+    }
+    else
+    {
         basic_info.have_animation = JXL_FALSE;
     }
-    status = JxlEncoderSetBasicInfo(enc, &basic_info);
-    if (status != JXL_ENC_SUCCESS) {
-        v.err = "jxl set BasicInfo error  !";
+
+    if (JxlEncoderSetBasicInfo(enc, &basic_info) != JXL_ENC_SUCCESS)
+    {
+        v.err = "jxl set BasicInfo error!";
         JxlEncoderDestroy(enc);
         return false;
     }
-    // 4. 设置默认色彩空间 (sRGB)
+
     JxlColorEncoding color_encoding;
-    JxlColorEncodingSetToSRGB(&color_encoding, /*is_gray=*/JXL_FALSE);
-    status = JxlEncoderSetColorEncoding(enc, &color_encoding);
-    if (status != JXL_ENC_SUCCESS) {
-        v.err = "jxl set ColorEncoding error  !";
+    JxlColorEncodingSetToSRGB(&color_encoding, JXL_FALSE);
+    if (JxlEncoderSetColorEncoding(enc, &color_encoding) != JXL_ENC_SUCCESS)
+    {
+        v.err = "jxl set ColorEncoding error!";
         JxlEncoderDestroy(enc);
         return false;
     }
-    // 5. 循环写入每一帧数据
+
+    JxlEncoderFrameSettings* frame_settings = JxlEncoderFrameSettingsCreate(enc, NULL);
+    if (!frame_settings)
+    {
+        v.err = "jxl create frame settings error!";
+        JxlEncoderDestroy(enc);
+        return false;
+    }
+
+    JxlEncoderSetFrameDistance(frame_settings, distance);
+    JxlEncoderSetFrameLossless(frame_settings, (distance == 0.0f) ? JXL_TRUE : JXL_FALSE);
+    JxlEncoderFrameSettingsSetOption(frame_settings, JXL_ENC_FRAME_SETTING_EFFORT, effort);
+    if (distance == 0.0f)
+    {
+        JxlEncoderFrameSettingsSetOption(frame_settings, JXL_ENC_FRAME_SETTING_RESAMPLING, 1);
+    }
+
     JxlPixelFormat pixel_format = {
-        first.elemsize > 3 ? 4u : 3u, // 4 = RGBA, 3 = RGB
+        static_cast<uint32_t>(channels),
         JXL_TYPE_UINT8,
         JXL_NATIVE_ENDIAN,
         0
     };
-    
-    std::list<int>::iterator j;
-    std::list<ncnn::Mat*>::iterator i;
+    const size_t frame_bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * channels;
 
-    for (i = v.outImage.begin(), j = v.inFrame.begin(); i != v.outImage.end(); i++, j++)
+    std::list<ncnn::Mat*>::iterator i = v.outImage.begin();
+    std::list<int>::iterator j = v.inFrame.begin();
+    for (; i != v.outImage.end(); ++i)
     {
-        ncnn::Mat & inimage = **i;
-        int duration_ms= *j;
-        // 为当前帧创建独立的 FrameSettings
-        JxlEncoderFrameSettings* frame_settings = JxlEncoderFrameSettingsCreate(enc, NULL);
-        
-        // 设置质量与努力程度
-        JxlEncoderSetFrameDistance(frame_settings, distance);
-        JxlEncoderSetFrameLossless(frame_settings, distance == 0.0f ? JXL_TRUE : JXL_FALSE);
-        JxlEncoderFrameSettingsSetOption(frame_settings, JXL_ENC_FRAME_SETTING_EFFORT, effort);
-        // 如果是无损，关闭色度抽样，保留原汁原味像素
-        if (distance == 0.0f) {
-            JxlEncoderFrameSettingsSetOption(frame_settings, JXL_ENC_FRAME_SETTING_RESAMPLING, 1);
+        ncnn::Mat& inimage = **i;
+        int duration_ms = 100;
+        if (j != v.inFrame.end())
+        {
+            duration_ms = (*j > 0) ? *j : 0;
+            ++j;
         }
-        // 动图设置当前帧时长
-        if (is_animation) {
+
+        if (is_animation)
+        {
             JxlFrameHeader frame_header;
             JxlEncoderInitFrameHeader(&frame_header);
-            // 因为 TPS 分子是 1000，这里的 duration 直接填毫秒数
-            frame_header.duration = duration_ms;
-            status = JxlEncoderSetFrameHeader(frame_settings, &frame_header);
-            if (status != JXL_ENC_SUCCESS) {
-                v.err = "jxl encode frame error  !";
+            frame_header.duration = static_cast<uint32_t>(duration_ms);
+            if (JxlEncoderSetFrameHeader(frame_settings, &frame_header) != JXL_ENC_SUCCESS)
+            {
+                v.err = "jxl set frame header error!";
+                JxlEncoderDestroy(enc);
+                return false;
             }
         }
-        // 提交当前帧的像素数据
-        status = JxlEncoderAddImageFrame(frame_settings, &pixel_format, inimage.data, inimage.cstep * inimage.elemsize);
-        if (status != JXL_ENC_SUCCESS) {
-            v.err = "jxl encode frame error  !";
+
+        if (JxlEncoderAddImageFrame(frame_settings, &pixel_format, inimage.data, frame_bytes) != JXL_ENC_SUCCESS)
+        {
+            v.err = "jxl encode frame error!";
             JxlEncoderDestroy(enc);
             return false;
         }
     }
-    // 6. 关闭输入，通知编码器不再有后续帧
+
     JxlEncoderCloseInput(enc);
-    // 7. 读取编码后的 JXL 二进制字节流
-    // 初始分配 128KB 缓冲区
-    v.allOutSize = 128 * 1024;
-    v.out = (unsigned char*)malloc(v.allOutSize);
 
-    uint8_t* next_out = (uint8_t* )v.out;
-    size_t avail_out = v.allOutSize;
+    size_t out_cap = 128 * 1024;
+    uint8_t* out_buf = static_cast<uint8_t*>(malloc(out_cap));
+    if (!out_buf)
+    {
+        v.err = "jxl alloc output buffer error";
+        JxlEncoderDestroy(enc);
+        return false;
+    }
 
+    uint8_t* next_out = out_buf;
+    size_t avail_out = out_cap;
+    size_t out_size = 0;
     bool success = false;
-    for (;;) {
-        status = JxlEncoderProcessOutput(enc, &next_out, &avail_out);
-        if (status == JXL_ENC_SUCCESS) {
-            // 编码成功结束，截断缓冲区到真实写入大小
-            v.allOutSize = v.allOutSize - avail_out;
-            v.out = realloc(v.out, v.allOutSize);
-            v.outSize = v.allOutSize;
+
+    for (;;)
+    {
+        JxlEncoderStatus status = JxlEncoderProcessOutput(enc, &next_out, &avail_out);
+        if (status == JXL_ENC_SUCCESS)
+        {
+            out_size = static_cast<size_t>(next_out - out_buf);
+            if (out_size == 0 || out_size > static_cast<size_t>(INT_MAX))
+            {
+                v.err = "jxl invalid output size";
+                break;
+            }
+            uint8_t* shrunk = static_cast<uint8_t*>(realloc(out_buf, out_size));
+            if (shrunk)
+            {
+                out_buf = shrunk;
+                out_cap = out_size;
+            }
             success = true;
             break;
-        } else if (status == JXL_ENC_NEED_MORE_OUTPUT) {
-            // 缓冲区不足，按 2 倍扩容并继续导出
-            size_t bytes_written = next_out - (uint8_t *)v.out;
-            v.allOutSize = v.allOutSize*2;
-            v.out = realloc(v.out, v.allOutSize);            
-            next_out = (uint8_t *)v.out + bytes_written;
-            avail_out = v.allOutSize - bytes_written;
-        } else {
+        }
+        else if (status == JXL_ENC_NEED_MORE_OUTPUT)
+        {
+            size_t bytes_written = static_cast<size_t>(next_out - out_buf);
+            if (out_cap >= static_cast<size_t>(INT_MAX))
+            {
+                v.err = "jxl output buffer too large";
+                break;
+            }
+            size_t new_cap = (out_cap > static_cast<size_t>(INT_MAX) / 2) ? static_cast<size_t>(INT_MAX) : (out_cap * 2);
+            uint8_t* new_buf = static_cast<uint8_t*>(realloc(out_buf, new_cap));
+            if (!new_buf)
+            {
+                v.err = "jxl realloc output buffer error";
+                break;
+            }
+            out_buf = new_buf;
+            out_cap = new_cap;
+            next_out = out_buf + bytes_written;
+            avail_out = out_cap - bytes_written;
+        }
+        else
+        {
             v.err = "jxl ProcessOutput error";
             break;
         }
     }
-    JxlEncoderDestroy(enc);
-    if (!success) {
-        if (v.out){
-            free(v.out);
-            v.out = NULL;
-            v.outSize = 0;
-            v.allOutSize = 0;
-        }
-    }
-    return success;
-}
 
+    JxlEncoderDestroy(enc);
+
+    if (!success)
+    {
+        free(out_buf);
+        v.out = NULL;
+        v.outSize = 0;
+        v.allOutSize = 0;
+        return false;
+    }
+
+    v.out = out_buf;
+    v.outSize = static_cast<int>(out_size);
+    v.allOutSize = static_cast<int>(out_cap);
+    return true;
+}
 
 #endif // JXL_IMAGE_H

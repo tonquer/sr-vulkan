@@ -24,9 +24,9 @@ waifu2x_py_set_thread_num(PyObject* self, PyObject* args, PyObject* kwargs)
 {
     if (!IsInit) return PyLong_FromLong(-1);  
     if (IsInitSet) return PyLong_FromLong(-1);  
-    Py_ssize_t  decodeNum = 0;
-    Py_ssize_t  procNum = 0;
-    Py_ssize_t  encodeNum = 0;
+    int  decodeNum = 0;
+    int  procNum = 0;
+    int  encodeNum = 0;
     char* kwarg_names[] = { (char*)"decodeNum",(char*)"procNum", (char*)"encodeNum", NULL };
     int sts;
 
@@ -41,9 +41,9 @@ waifu2x_py_init_set(PyObject* self, PyObject* args, PyObject* kwargs)
 {
     if (!IsInit) return PyLong_FromLong(-1);
     if (IsInitSet) return PyLong_FromLong(0);
-    Py_ssize_t  gpuId = 0;
-    Py_ssize_t  cpuNum = 0;
-    Py_ssize_t  noSetDefaultPath = 0;
+    int  gpuId = 0;
+    int  cpuNum = 0;
+    int  noSetDefaultPath = 0;
     char* kwarg_names[] = { (char*)"gpuId",(char*)"cpuNum", (char*)"noDefaultPath", NULL };
     int sts;
 
@@ -67,7 +67,7 @@ waifu2x_py_init_set(PyObject* self, PyObject* args, PyObject* kwargs)
         const wchar_t* path = NULL;
         PyObject* pyPathObj = NULL;
         Py_ssize_t pathLength = 0;
-        // ä½¿ç”¨ "O" æ ¼å¼è·å–é€šç”¨å¯¹è±¡ï¼Œå†é€šè¿‡ PyUnicode_AsWideCharString æ˜¾å¼è½¬æ¢
+        // Ê¹ÓÃ "O" ¸ñÊ½»ñÈ¡Í¨ÓÃ¶ÔÏó£¬ÔÙÍ¨¹ı PyUnicode_AsWideCharString ÏÔÊ½×ª»»
         if (!PyArg_Parse(rel, "O", &pyPathObj))
         {
             Py_RETURN_NONE;
@@ -163,13 +163,13 @@ waifu2x_py_set_debug(PyObject* self, PyObject* args)
 static PyObject*
 waifu2x_py_get_model_name(PyObject* self, PyObject* args)
 {
-    Py_ssize_t modelIndex = 0;
+    int modelIndex = 0;
     if (!PyArg_ParseTuple(args, "i", &modelIndex))
         Py_RETURN_NONE;
     modelIndex = modelIndex / 2;
     int len = sizeof(AllModel) / sizeof(AllModel[0]);
     char errMsg[512];
-    if (modelIndex >= len) {
+    if (modelIndex < 0 || modelIndex >= len) {
         sprintf(errMsg, "[SR_VULKAN] index error, index:%d, max_index:%d", modelIndex, len);
         waifu2x_set_error(errMsg);
         Py_RETURN_NONE;
@@ -184,14 +184,14 @@ waifu2x_py_set_path(PyObject* self, PyObject* args)
     int sts;
 #if _WIN32
     const wchar_t* modelPath = 0;
-    PyObject* pyModelPathObj = NULL; // å£°æ˜ PyObject æŒ‡é’ˆæ¥æ”¶å‚æ•°
-    if (!PyArg_ParseTuple(args, "|O", &pyModelPathObj)) // ä½¿ç”¨ "O" æ ¼å¼è·å–é€šç”¨å¯¹è±¡
+    PyObject* pyModelPathObj = NULL; // ÉùÃ÷ PyObject Ö¸Õë½ÓÊÕ²ÎÊı
+    if (!PyArg_ParseTuple(args, "|O", &pyModelPathObj)) // Ê¹ÓÃ "O" ¸ñÊ½»ñÈ¡Í¨ÓÃ¶ÔÏó
     {
         Py_RETURN_NONE;
     }
     if (pyModelPathObj && pyModelPathObj != Py_None) 
     {
-        modelPath = PyUnicode_AsWideCharString(pyModelPathObj, NULL);  // è½¬æ¢ä¸º wchar_t*
+        modelPath = PyUnicode_AsWideCharString(pyModelPathObj, NULL);  // ×ª»»Îª wchar_t*
         if (!modelPath) 
         {
             Py_RETURN_NONE;
@@ -222,7 +222,7 @@ waifu2x_py_set_path(PyObject* self, PyObject* args)
         const wchar_t* path = NULL;
         PyObject* pyPathObj = NULL;
         Py_ssize_t pathLength = 0;
-        // ä½¿ç”¨ "O" æ ¼å¼è·å–é€šç”¨å¯¹è±¡ï¼Œå†é€šè¿‡ PyUnicode_AsWideCharString æ˜¾å¼è½¬æ¢
+        // Ê¹ÓÃ "O" ¸ñÊ½»ñÈ¡Í¨ÓÃ¶ÔÏó£¬ÔÙÍ¨¹ı PyUnicode_AsWideCharString ÏÔÊ½×ª»»
         if (!PyArg_Parse(rel, "O", &pyPathObj)) 
         {
             Py_RETURN_NONE;
@@ -238,7 +238,7 @@ waifu2x_py_set_path(PyObject* self, PyObject* args)
         }
 #else
         const char* path = NULL;
-        PyArg_Parse(rel, "s#", &path);
+        PyArg_Parse(rel, "s", &path);
 #endif
         sts = waifu2x_init_path(path);
     }
@@ -264,11 +264,11 @@ waifu2x_py_remove_wait(PyObject* self, PyObject* args, PyObject* kwargs)
     }
     std::set<int> taskIds;
     PyObject* list_item = NULL;
-    Py_ssize_t  taskId;
+    Py_ssize_t  taskId=0;
     for (int i = 0; i < list_len; i++)
     {
         list_item = PyList_GetItem(bufobj, i);
-        PyArg_Parse(list_item, "i", &taskId);
+        PyArg_Parse(list_item, "n", &taskId);
         taskIds.insert(taskId);
     }
     waifu2x_remove_wait(taskIds);
@@ -299,7 +299,7 @@ waifu2x_py_remove(PyObject* self, PyObject* args, PyObject* kwargs)
     for (int i = 0; i < list_len; i++)
     {
         list_item = PyList_GetItem(bufobj, i);
-        PyArg_Parse(list_item, "i", &taskId);
+        PyArg_Parse(list_item, "n", &taskId);
         taskIds.insert(taskId);
     }
     waifu2x_remove(taskIds);
@@ -318,12 +318,12 @@ waifu2x_py_add(PyObject* self, PyObject* args, PyObject* kwargs)
     const char* b = NULL;
     Py_ssize_t size;
     int sts = 1;
-    Py_ssize_t  callBack = 0;
-    Py_ssize_t  modelIndex = 0;
+    int callBack = 0;
+    int modelIndex = 0;
     const char* format = NULL;
-    Py_ssize_t  width = 0;
-    Py_ssize_t  high = 0;
-    Py_ssize_t  tileSize = 0;
+    int width = 0;
+    int high = 0;
+    int tileSize = 0;
     float scale = 0;
 
     char* kwarg_names[] = { (char*)"data",(char*)"modelIndex",(char*)"backId",(char*)"scale", (char*)"format", (char *)"tileSize", NULL };
@@ -364,8 +364,8 @@ waifu2x_py_convert(PyObject* self, PyObject* args, PyObject* kwargs)
     Py_ssize_t size;
     int sts = 1;
     const char* format = NULL;
-    Py_ssize_t  width = 0;
-    Py_ssize_t  height = 0;
+    int width = 0;
+    int height = 0;
     void* out = NULL;
     unsigned long outSize = 0;
 
@@ -430,7 +430,7 @@ waifu2x_py_get_gpu_core(PyObject* self, PyObject* args, PyObject* kwargs)
     {
         return PyLong_FromLong(0);
     }
-    Py_ssize_t gpuId = 0;
+    int gpuId = 0;
     char* kwarg_names[] = { (char*)"gpuId", NULL };
     if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i", kwarg_names, &gpuId))
         Py_RETURN_NONE;
@@ -440,6 +440,10 @@ waifu2x_py_get_gpu_core(PyObject* self, PyObject* args, PyObject* kwargs)
     {
         return PyLong_FromLong(0);
     }
+    if (gpuId < 0 || gpuId >= gpu_count) {
+        return PyLong_FromLong(0);
+    }
+
     int gpu_queue_count = ncnn::get_gpu_info(gpuId).compute_queue_count();
     return PyLong_FromLong(gpu_queue_count);
 }
@@ -466,7 +470,7 @@ waifu2x_py_load(PyObject* self, PyObject* args, PyObject* kwargs)
     }
     void* out = NULL;
     unsigned long outSize = 0;
-    Py_ssize_t block = 0;
+    int block = 0;
     double tick = 0;
     int callBack;
     char* kwarg_names[] = { (char*)"block", NULL };
@@ -474,7 +478,7 @@ waifu2x_py_load(PyObject* self, PyObject* args, PyObject* kwargs)
         Py_RETURN_NONE;
     PyThreadState* save;
     save = PyEval_SaveThread();
-    char format[5] = "";
+    char format[16] = "";
 
     int sts = waifu2x_getData(out, outSize, tick, callBack, format, block);
     PyEval_RestoreThread(save);

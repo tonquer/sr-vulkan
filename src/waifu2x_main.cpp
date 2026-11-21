@@ -57,6 +57,10 @@ int waifu2x_getData(void*& out, unsigned long& outSize, double& tick, int& callB
     v.clear_out_image();
 
     if (!v.isSuc) {
+        if (v.out) {
+            free(v.out);
+            v.out = NULL;
+        }
         waifu2x_set_error(v.err.c_str());
         return v.id;
     }
@@ -64,7 +68,7 @@ int waifu2x_getData(void*& out, unsigned long& outSize, double& tick, int& callB
     outSize = v.outSize;
 
     v.out = NULL;
-    strcpy(format, v.save_format.c_str());
+    snprintf(format, 16, "%s", v.save_format.c_str());
     tick = v.all_tick;
     return v.id;
 }
@@ -75,10 +79,11 @@ void* waifu2x_decode(void* args)
     {
         Task v;
         Todecode.get(v);
-        if (v.id == -233)
+        if (v.id == -233 || IsExitFlag)
+        {
+            v.clear_all();
             break;
-        if (IsExitFlag)
-            break;
+        }
         int modelLen = sizeof(AllModel) / sizeof(AllModel[0]) * 2;
 
         if (v.modelIndex >= (modelLen))
@@ -123,10 +128,11 @@ void* waifu2x_encode(void* args)
     {
         Task v;
         Toencode.get(v);
-        if (v.id == -233)
+        if (v.id == -233 || IsExitFlag)
+        {
+            v.clear_all();
             break;
-        if (IsExitFlag)
-            break;
+        }
 
         struct timespec start;
         timespec_get(&start, TIME_UTC);
@@ -249,10 +255,11 @@ void* waifu2x_proc(void* args)
     {
         Task v;
         Toproc.get(v);
-        if (v.id == -233)
+        if (v.id == -233 || IsExitFlag)
+        {
+            v.clear_all();
             break;
-        if (IsExitFlag)
-            break;
+        }
         int sts = waifu2x_check_init_model(v.modelIndex, ltp);
         if (sts < 0)
         {
@@ -289,16 +296,27 @@ void* waifu2x_proc(void* args)
 
 void* waifu2x_to_stop(void* args)
 {
-    for (int i = 0; i < (int)OtherThreads.size(); i++)
+    for (size_t i = 0; i < OtherThreads.size(); i++)
     {
-        OtherThreads[i]->join();
-        delete OtherThreads[i];
+        if (OtherThreads[i])
+        {
+            OtherThreads[i]->join();
+            delete OtherThreads[i];
+        }
     }
-    for (int i = 0; i < TotalJobsProc; i++)
+    OtherThreads.clear();
+
+    for (size_t i = 0; i < ProcThreads.size(); i++)
     {
-        ProcThreads[i]->join();
-        delete ProcThreads[i];
+        if (ProcThreads[i])
+        {
+            ProcThreads[i]->join();
+            delete ProcThreads[i];
+        }
     }
+    ProcThreads.clear();
+
+    waifu2x_clear();
     ncnn::destroy_gpu_instance();
     return 0;
 }
@@ -311,23 +329,19 @@ int waifu2x_addModel(const Waifu2xChar* name, int scale2, int noise2, int tta_mo
     if (waifu2x_get_path_size() == 0)
     {
 #if _WIN32
-        // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/../sr_vulkan_model_waifu2x/models/%s.param", DefaultModelPath, name);
-        swprintf(modelpath, L"%s/../sr_vulkan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
+        swprintf(parampath, 1024, L"%s/../sr_vulkan_model_waifu2x/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, 1024, L"%s/../sr_vulkan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
 #else
-        // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/../sr_vulkan_model_waifu2x/models/%s.param", DefaultModelPath, name);
-        sprintf(modelpath, "%s/../sr_vulkan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
+        snprintf(parampath, sizeof(parampath), "%s/../sr_vulkan_model_waifu2x/models/%s.param", DefaultModelPath, name);
+        snprintf(modelpath, sizeof(modelpath), "%s/../sr_vulkan_model_waifu2x/models/%s.bin", DefaultModelPath, name);
 #endif
     } else {
 #if _WIN32
-        // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/waifu2x/%s.param", GlobalModelPath, name);
-        swprintf(modelpath, L"%s/waifu2x/%s.bin", GlobalModelPath, name);
+        swprintf(parampath, 1024, L"%s/waifu2x/%s.param", GlobalModelPath, name);
+        swprintf(modelpath, 1024, L"%s/waifu2x/%s.bin", GlobalModelPath, name);
 #else
-        // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/waifu2x/%s.param", GlobalModelPath, name);
-        sprintf(modelpath, "%s/waifu2x/%s.bin", GlobalModelPath, name);
+        snprintf(parampath, sizeof(parampath), "%s/waifu2x/%s.param", GlobalModelPath, name);
+        snprintf(modelpath, sizeof(modelpath), "%s/waifu2x/%s.bin", GlobalModelPath, name);
 #endif
     }
 
@@ -474,23 +488,19 @@ int realcugan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mo
     if (waifu2x_get_path_size() == 0)
     {
 #if _WIN32
-        // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/../sr_vulkan_model_realcugan/models/%s.param", DefaultModelPath, name);
-        swprintf(modelpath, L"%s/../sr_vulkan_model_realcugan/models/%s.bin", DefaultModelPath, name);
+        swprintf(parampath, 1024, L"%s/../sr_vulkan_model_realcugan/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, 1024, L"%s/../sr_vulkan_model_realcugan/models/%s.bin", DefaultModelPath, name);
 #else
-        // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/../sr_vulkan_model_realcugan/models/%s.param", DefaultModelPath, name);
-        sprintf(modelpath, "%s/../sr_vulkan_model_realcugan/models/%s.bin", DefaultModelPath, name);
+        snprintf(parampath, sizeof(parampath), "%s/../sr_vulkan_model_realcugan/models/%s.param", DefaultModelPath, name);
+        snprintf(modelpath, sizeof(modelpath), "%s/../sr_vulkan_model_realcugan/models/%s.bin", DefaultModelPath, name);
 #endif
     } else {
 #if _WIN32
-        // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/realcugan/%s.param", GlobalModelPath, name);
-        swprintf(modelpath, L"%s/realcugan/%s.bin", GlobalModelPath, name);
+        swprintf(parampath, 1024, L"%s/realcugan/%s.param", GlobalModelPath, name);
+        swprintf(modelpath, 1024, L"%s/realcugan/%s.bin", GlobalModelPath, name);
 #else
-        // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/realcugan/%s.param", GlobalModelPath, name);
-        sprintf(modelpath, "%s/realcugan/%s.bin", GlobalModelPath, name);
+        snprintf(parampath, sizeof(parampath), "%s/realcugan/%s.param", GlobalModelPath, name);
+        snprintf(modelpath, sizeof(modelpath), "%s/realcugan/%s.bin", GlobalModelPath, name);
 #endif
     }
     int prepadding = 18;
@@ -616,26 +626,22 @@ int realsr_addModel(const Waifu2xChar* name, int scale, int noise, int tta_mode,
 
     Waifu2xChar parampath[1024];
     Waifu2xChar modelpath[1024];
-   if (waifu2x_get_path_size() == 0)
+    if (waifu2x_get_path_size() == 0)
     {
 #if _WIN32
-        // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/../sr_vulkan_model_realsr/models/%s.param", DefaultModelPath, name);
-        swprintf(modelpath, L"%s/../sr_vulkan_model_realsr/models/%s.bin", DefaultModelPath, name);
+        swprintf(parampath, 1024, L"%s/../sr_vulkan_model_realsr/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, 1024, L"%s/../sr_vulkan_model_realsr/models/%s.bin", DefaultModelPath, name);
 #else
-        // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/../sr_vulkan_model_realsr/models/%s.param", DefaultModelPath, name);
-        sprintf(modelpath, "%s/../sr_vulkan_model_realsr/models/%s.bin", DefaultModelPath, name);
+        snprintf(parampath, sizeof(parampath), "%s/../sr_vulkan_model_realsr/models/%s.param", DefaultModelPath, name);
+        snprintf(modelpath, sizeof(modelpath), "%s/../sr_vulkan_model_realsr/models/%s.bin", DefaultModelPath, name);
 #endif
     } else {
 #if _WIN32
-        // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/realsr/%s.param", GlobalModelPath, name);
-        swprintf(modelpath, L"%s/realsr/%s.bin", GlobalModelPath, name);
+        swprintf(parampath, 1024, L"%s/realsr/%s.param", GlobalModelPath, name);
+        swprintf(modelpath, 1024, L"%s/realsr/%s.bin", GlobalModelPath, name);
 #else
-        // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/realsr/%s.param", GlobalModelPath, name);
-        sprintf(modelpath, "%s/realsr/%s.bin", GlobalModelPath, name);
+        snprintf(parampath, sizeof(parampath), "%s/realsr/%s.param", GlobalModelPath, name);
+        snprintf(modelpath, sizeof(modelpath), "%s/realsr/%s.bin", GlobalModelPath, name);
 #endif
     }
 
@@ -729,26 +735,22 @@ int realesrgan_addModel(const Waifu2xChar* name, int scale, int noise, int tta_m
 
     Waifu2xChar parampath[1024];
     Waifu2xChar modelpath[1024];
-   if (waifu2x_get_path_size() == 0)
+    if (waifu2x_get_path_size() == 0)
     {
 #if _WIN32
-        // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/../sr_vulkan_model_realesrgan/models/%s.param", DefaultModelPath, name);
-        swprintf(modelpath, L"%s/../sr_vulkan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
+        swprintf(parampath, 1024, L"%s/../sr_vulkan_model_realesrgan/models/%s.param", DefaultModelPath, name);
+        swprintf(modelpath, 1024, L"%s/../sr_vulkan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
 #else
-        // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/../sr_vulkan_model_realesrgan/models/%s.param", DefaultModelPath, name);
-        sprintf(modelpath, "%s/../sr_vulkan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
+        snprintf(parampath, sizeof(parampath), "%s/../sr_vulkan_model_realesrgan/models/%s.param", DefaultModelPath, name);
+        snprintf(modelpath, sizeof(modelpath), "%s/../sr_vulkan_model_realesrgan/models/%s.bin", DefaultModelPath, name);
 #endif
     } else {
 #if _WIN32
-        // Waifu2xList.push_back(NULL);
-        swprintf(parampath, L"%s/realesrgan/%s.param", GlobalModelPath, name);
-        swprintf(modelpath, L"%s/realesrgan/%s.bin", GlobalModelPath, name);
+        swprintf(parampath, 1024, L"%s/realesrgan/%s.param", GlobalModelPath, name);
+        swprintf(modelpath, 1024, L"%s/realesrgan/%s.bin", GlobalModelPath, name);
 #else
-        // Waifu2xList.push_back(NULL);
-        sprintf(parampath, "%s/realesrgan/%s.param", GlobalModelPath, name);
-        sprintf(modelpath, "%s/realesrgan/%s.bin", GlobalModelPath, name);
+        snprintf(parampath, sizeof(parampath), "%s/realesrgan/%s.param", GlobalModelPath, name);
+        snprintf(modelpath, sizeof(modelpath), "%s/realesrgan/%s.bin", GlobalModelPath, name);
 #endif
     }
 
@@ -860,15 +862,17 @@ int waifu2x_init_default_path(const Waifu2xChar* modelPath2)
 #if _WIN32
     if (modelPath2)
     {
-        memset(DefaultModelPath, 0, 1024);
-        wcscpy(DefaultModelPath, modelPath2);
-    };
+        memset(DefaultModelPath, 0, sizeof(DefaultModelPath));
+        wcsncpy(DefaultModelPath, modelPath2, 1023);
+        DefaultModelPath[1023] = L'\0';
+    }
 #else
     if (modelPath2)
     {
-        memset(DefaultModelPath, 0, 1024);
-        strcpy(DefaultModelPath, modelPath2);
-    };
+        memset(DefaultModelPath, 0, sizeof(DefaultModelPath));
+        strncpy(DefaultModelPath, modelPath2, 1023);
+        DefaultModelPath[1023] = '\0';
+    }
 #endif
     return 0;
 }
@@ -878,15 +882,17 @@ int waifu2x_init_path(const Waifu2xChar* modelPath2)
 #if _WIN32
     if (modelPath2)
     {
-        memset(GlobalModelPath, 0, 1024);
-        wcscpy(GlobalModelPath, modelPath2);
-    };
+        memset(GlobalModelPath, 0, sizeof(GlobalModelPath));
+        wcsncpy(GlobalModelPath, modelPath2, 1023);
+        GlobalModelPath[1023] = L'\0';
+    }
 #else
     if (modelPath2)
     {
-        memset(GlobalModelPath, 0, 1024);
-        strcpy(GlobalModelPath, modelPath2);
-    };
+        memset(GlobalModelPath, 0, sizeof(GlobalModelPath));
+        strncpy(GlobalModelPath, modelPath2, 1023);
+        GlobalModelPath[1023] = '\0';
+    }
 #endif
     return 0;
 }
@@ -946,6 +952,9 @@ int waifu2x_init_set(int gpuId2, int cpuNum)
     int modelLen = sizeof(AllModel) / sizeof(AllModel[0]);
     waifu2x_printf(stdout, "[SR_VULKAN] init thread num, decode:%d, proc:%d, encode:%d, model num:%d\n", TotalJobsDecode, TotalJobsProc, TotalJobsEncode, modelLen);
 
+    IsExitFlag = false;
+    GpuId = gpuId2;
+
     // waifu2x proc
     ProcThreads.resize(TotalJobsProc);
     {
@@ -969,7 +978,6 @@ int waifu2x_init_set(int gpuId2, int cpuNum)
             ProcThreads[total_jobs_proc_id++] = new ncnn::Thread(waifu2x_proc, (void*)ltp);
         }
     }
-    GpuId = gpuId2;
     //waifu2x_printf(stdout, "init success, threadNum:%d\n", TotalJobsProc);
     return 0;
 }
@@ -980,29 +988,7 @@ void init_waifu2x_model_size(LoadThreadParams* ltp)
     int len = sizeof(AllModel) / sizeof(AllModel[0]);
     for (int j = 0; j < len; j++)
     {
-#if _WIN32
-        std::string oldName = AllModel[j];
-        wchar_t* oldName2 = _bstr_t(oldName.c_str());
-        std::wstring name = oldName2;
-
-        if (name.find(L"WAIFU2X") != std::string::npos) {
-            ltp->waifu2xList.push_back(NULL);
-            ltp->waifu2xList.push_back(NULL);
-        }
-        else if (name.find(L"REALCUGAN") != std::string::npos) {
-            ltp->realCuganList.push_back(NULL);
-            ltp->realCuganList.push_back(NULL);
-        }
-        else if (name.find(L"REALSR") != std::string::npos) {
-            ltp->realSrList.push_back(NULL);
-            ltp->realSrList.push_back(NULL);
-        }
-        else if (name.find(L"REALESRGAN") != std::string::npos) {
-            ltp->realEsrganList.push_back(NULL);
-            ltp->realEsrganList.push_back(NULL);
-        }
-#else
-        std::string name = AllModel[j];
+        const std::string& name = AllModel[j];
         if (name.find("WAIFU2X") != std::string::npos) {
             ltp->waifu2xList.push_back(NULL);
             ltp->waifu2xList.push_back(NULL);
@@ -1019,7 +1005,6 @@ void init_waifu2x_model_size(LoadThreadParams* ltp)
             ltp->realEsrganList.push_back(NULL);
             ltp->realEsrganList.push_back(NULL);
         }
-#endif
     }
 }
 
@@ -1032,38 +1017,36 @@ int waifu2x_check_init_model(int initModel, LoadThreadParams* ltp)
         return Waifu2xError::NotModel;
     }
     int scale = 1;
-    int noise = 0;
+    int noise = -1;
     bool tta = (initModel % 2 == 1);
     int modelIndex = initModel / 2;
 #if _WIN32
-    std::string oldName = AllModel[modelIndex];
-
-    wchar_t * oldName2 = _bstr_t(oldName.c_str());
-    std::wstring name = oldName2;
-    if (name.find(L"UP2X") != std::string::npos)
+    const std::string& oldName = AllModel[modelIndex];
+    std::wstring name(oldName.begin(), oldName.end());
+    if (name.find(L"UP2X") != std::wstring::npos)
     {
         scale = 2;
-    } else if(name.find(L"UP3X") != std::string::npos)
+    } else if(name.find(L"UP3X") != std::wstring::npos)
     {
         scale = 3;
-    } else if (name.find(L"UP4X") != std::string::npos)
+    } else if (name.find(L"UP4X") != std::wstring::npos)
     {
         scale = 4;
     }
 
-    if (name.find(L"DENOISE0X") != std::string::npos)
+    if (name.find(L"DENOISE0X") != std::wstring::npos)
     {
         noise = 0;
     }
-    else if (name.find(L"DENOISE1X") != std::string::npos)
+    else if (name.find(L"DENOISE1X") != std::wstring::npos)
     {
         noise = 1;
     }
-    else if (name.find(L"DENOISE2X") != std::string::npos)
+    else if (name.find(L"DENOISE2X") != std::wstring::npos)
     {
         noise = 2;
     }
-    else if (name.find(L"DENOISE3X") != std::string::npos)
+    else if (name.find(L"DENOISE3X") != std::wstring::npos)
     {
         noise = 3;
     }
@@ -1188,6 +1171,11 @@ int waifu2x_addData(const unsigned char* data, unsigned int size, int callBack, 
     v.auto_transfom = GlobalAutoTransform;
     if ((toH <= 0 || toW <= 0) && scale <= 0)
     {
+        if (v.fileDate)
+        {
+            free(v.fileDate);
+            v.fileDate = NULL;
+        }
         waifu2x_set_error("invalid scale params");
         return -1;
     }
@@ -1203,6 +1191,11 @@ int waifu2x_addData(const unsigned char* data, unsigned int size, int callBack, 
         return v.id;
     }
 
+    if (v.fileDate)
+    {
+        free(v.fileDate);
+        v.fileDate = NULL;
+    }
     waifu2x_set_error("invalid pictrue format");
     return -1;
 }
@@ -1243,6 +1236,11 @@ int waifu2x_convert(const unsigned char* data, unsigned int size, const char* fo
         v.clear_in_image();
         v.clear_out_image();
         if (!isSuc) {
+            if (v.out)
+            {
+                free(v.out);
+                v.out = NULL;
+            }
             waifu2x_set_error(v.err.c_str());
             return -1;
         }
@@ -1251,6 +1249,11 @@ int waifu2x_convert(const unsigned char* data, unsigned int size, const char* fo
         return 1;
     }
 
+    if (v.fileDate)
+    {
+        free(v.fileDate);
+        v.fileDate = NULL;
+    }
     waifu2x_set_error("invalid pictrue format");
     return -1;
 }
@@ -1262,9 +1265,17 @@ int waifu2x_stop()
         IsExitFlag = true;
         Task end;
         end.id = -233;
-        for (int i = 0; i < TotalJobsProc; i++)
+        for (int i = 0; i < TotalJobsDecode; i++)
+        {
+            Todecode.put(end);
+        }
+        for (size_t i = 0; i < ProcThreads.size(); i++)
         {
             Toproc.put(end);
+        }
+        for (int i = 0; i < TotalJobsEncode; i++)
+        {
+            Toencode.put(end);
         }
 
         Toproc.broadcast();

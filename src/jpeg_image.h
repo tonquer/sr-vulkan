@@ -5,8 +5,20 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
+#include <cstring>
 #include "jpeglib.h"
 #include "common_image.h"
+
+#ifndef SR_NOINLINE
+#if defined(_MSC_VER)
+#define SR_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+#define SR_NOINLINE __attribute__((noinline))
+#else
+#define SR_NOINLINE
+#endif
+#endif
 
 struct safe_jpeg_error_mgr
 {
@@ -28,11 +40,28 @@ static void safe_jpeg_output_message(j_common_ptr cinfo)
 {
 }
 
-unsigned char* jpeg_load_memery(const unsigned char* buffer, int len, int* w, int* h, int* c, bool auto_transfom)
+static inline bool is_jpeg_data(const void* data, int size)
 {
-    unsigned char* pixeldata = 0;
-    uint8_t * outPixels = 0;
+    if (!data || size < 2)
+        return false;
+    const uint8_t* bytes = static_cast<const uint8_t*>(data);
+    return bytes[0] == 0xFF && bytes[1] == 0xD8;
+}
 
+typedef unsigned char* (*jpeg_alloc_fn)(void* ctx, int width, int height);
+
+struct jpeg_decode_out
+{
+    int width;
+    int height;
+    int orientation;
+};
+
+// Pure-C noinline helper so setjmp/longjmp never crosses C++ EH frames or inlined destructors.
+SR_NOINLINE static bool jpeg_decompress_core(const unsigned char* buffer, int len, bool auto_transfom,
+                                             jpeg_alloc_fn alloc_fn, void* alloc_ctx,
+                                             jpeg_decode_out* out)
+{
     struct jpeg_decompress_struct cinfo;
     struct safe_jpeg_error_mgr jerr;
 
@@ -44,70 +73,79 @@ unsigned char* jpeg_load_memery(const unsigned char* buffer, int len, int* w, in
     if (setjmp(jerr.setjmp_buffer))
     {
         jpeg_destroy_decompress(&cinfo);
-        return NULL;
+        return false;
     }
 
     jpeg_create_decompress(&cinfo);
 
-    if (auto_transfom) {
+    if (auto_transfom)
+    {
         jpeg_save_markers(&cinfo, JPEG_APP0 + 1, 0xFFFF);
     }
 
-    jpeg_mem_src(&cinfo, (unsigned char*)buffer, len);
+    jpeg_mem_src(&cinfo, buffer, static_cast<unsigned long>(len));
 
     if (jpeg_read_header(&cinfo, TRUE) != JPEG_HEADER_OK)
     {
         jpeg_destroy_decompress(&cinfo);
-        return NULL;
+        return false;
     }
 
-    // 遍历保留的标记，提取 EXIF 旋转方向
     int orientation = 1;
-    if (auto_transfom) {
-        for (jpeg_saved_marker_ptr m = cinfo.marker_list; m != nullptr; m = m->next) {
+    if (auto_transfom)
+    {
+        for (jpeg_saved_marker_ptr m = cinfo.marker_list; m != NULL; m = m->next)
+        {
             if (m->marker == JPEG_APP0 + 1)
             {
                 orientation = get_exif_orientation(m->data, m->data_length);
-                if (orientation != 1) break;
+                if (orientation != 1)
+                    break;
             }
         }
     }
 
-    // always output RGB 8bit
     cinfo.out_color_space = JCS_RGB;
     cinfo.output_components = 3;
     cinfo.data_precision = 8;
 
     jpeg_start_decompress(&cinfo);
 
-    int width = cinfo.image_width;
-    int height = cinfo.image_height;
+    if (cinfo.output_width == 0 || cinfo.output_height == 0 ||
+        cinfo.output_width > static_cast<JDIMENSION>(INT_MAX) ||
+        cinfo.output_height > static_cast<JDIMENSION>(INT_MAX))
+    {
+        jpeg_destroy_decompress(&cinfo);
+        return false;
+    }
 
-    pixeldata = (unsigned char*)malloc(width * height * 3);
+    int width = static_cast<int>(cinfo.output_width);
+    int height = static_cast<int>(cinfo.output_height);
+    unsigned char* dst = alloc_fn(alloc_ctx, width, height);
+    if (!dst)
+    {
+        jpeg_destroy_decompress(&cinfo);
+        return false;
+    }
 
+    size_t row_stride = static_cast<size_t>(width) * 3;
     while (cinfo.output_scanline < cinfo.output_height)
     {
-        unsigned char* ptr = (unsigned char*)pixeldata + (size_t)cinfo.output_scanline * width * 3;
+        unsigned char* ptr = dst + static_cast<size_t>(cinfo.output_scanline) * row_stride;
         jpeg_read_scanlines(&cinfo, &ptr, 1);
     }
 
     jpeg_finish_decompress(&cinfo);
-
     jpeg_destroy_decompress(&cinfo);
 
-    outPixels = apply_orientation(pixeldata, width, height, 3, orientation);
-    *w = width;
-    *h = height;
-    *c = 3;
-    if (outPixels != nullptr && outPixels != pixeldata) {
-        free(pixeldata);
-        return outPixels;
-    } else {
-        return pixeldata;
-    }    
+    out->width = width;
+    out->height = height;
+    out->orientation = orientation;
+    return true;
 }
 
-int jpeg_save_memery(Task& v, int w, int h, int c, const unsigned char* pixeldata)
+SR_NOINLINE static bool jpeg_compress_core(int w, int h, int c, const unsigned char* pixeldata,
+                                           unsigned char** outbuf, unsigned long* outlen)
 {
     struct jpeg_compress_struct cinfo;
     struct safe_jpeg_error_mgr jerr;
@@ -120,27 +158,26 @@ int jpeg_save_memery(Task& v, int w, int h, int c, const unsigned char* pixeldat
     if (setjmp(jerr.setjmp_buffer))
     {
         jpeg_destroy_compress(&cinfo);
-        return 0;
+        return false;
     }
 
     jpeg_create_compress(&cinfo);
 
-    //jpeg_stdio_dest(&cinfo, fp);
-    jpeg_mem_dest(&cinfo, (unsigned char **)(&v.out), (unsigned long *)&v.outSize);
-    cinfo.image_width = w;
-    cinfo.image_height = h;
+    jpeg_mem_dest(&cinfo, outbuf, outlen);
+    cinfo.image_width = static_cast<JDIMENSION>(w);
+    cinfo.image_height = static_cast<JDIMENSION>(h);
 
-    // always input RGB 8bit
     if (c == 4)
     {
         cinfo.in_color_space = JCS_EXT_RGBA;
         cinfo.input_components = 4;
     }
-    else {
+    else
+    {
         cinfo.in_color_space = JCS_RGB;
         cinfo.input_components = 3;
     }
-    
+
     cinfo.data_precision = 8;
 
     jpeg_set_defaults(&cinfo);
@@ -157,37 +194,142 @@ int jpeg_save_memery(Task& v, int w, int h, int c, const unsigned char* pixeldat
 
     jpeg_start_compress(&cinfo, TRUE);
 
+    size_t row_stride = static_cast<size_t>(w) * static_cast<size_t>(c);
     for (int y = 0; y < h; y++)
     {
-        const unsigned char* ptr = pixeldata + (size_t)y * w * c;
-        jpeg_write_scanlines(&cinfo, (unsigned char**)&ptr, 1);
+        const unsigned char* ptr = pixeldata + static_cast<size_t>(y) * row_stride;
+        jpeg_write_scanlines(&cinfo, const_cast<JSAMPARRAY>(&ptr), 1);
     }
 
     jpeg_finish_compress(&cinfo);
-
     jpeg_destroy_compress(&cinfo);
+    return true;
+}
 
+static unsigned char* jpeg_alloc_malloc_cb(void* ctx, int width, int height)
+{
+    unsigned char** slot = static_cast<unsigned char**>(ctx);
+    size_t buf_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 3;
+    *slot = static_cast<unsigned char*>(malloc(buf_size));
+    return *slot;
+}
 
+static unsigned char* jpeg_alloc_mat_cb(void* ctx, int width, int height)
+{
+    ncnn::Mat** slot = static_cast<ncnn::Mat**>(ctx);
+    ncnn::Mat* mat = new ncnn::Mat();
+    mat->create(width, height, static_cast<size_t>(3), 3);
+    if (mat->empty())
+    {
+        delete mat;
+        return NULL;
+    }
+    *slot = mat;
+    return static_cast<unsigned char*>(mat->data);
+}
+
+unsigned char* jpeg_load_memery(const unsigned char* buffer, int len, int* w, int* h, int* c, bool auto_transfom)
+{
+    if (!is_jpeg_data(buffer, len) || !w || !h || !c)
+        return NULL;
+
+    unsigned char* pixeldata = NULL;
+    jpeg_decode_out out = { 0, 0, 1 };
+
+    if (!jpeg_decompress_core(buffer, len, auto_transfom, &jpeg_alloc_malloc_cb, &pixeldata, &out))
+    {
+        if (pixeldata)
+            free(pixeldata);
+        return NULL;
+    }
+
+    int width = out.width;
+    int height = out.height;
+    uint8_t* outPixels = NULL;
+    if (out.orientation != 1)
+    {
+        outPixels = apply_orientation(pixeldata, width, height, 3, out.orientation);
+    }
+
+    *w = width;
+    *h = height;
+    *c = 3;
+    if (outPixels != nullptr && outPixels != pixeldata)
+    {
+        free(pixeldata);
+        return outPixels;
+    }
+    return pixeldata;
+}
+
+int jpeg_save_memery(Task& v, int w, int h, int c, const unsigned char* pixeldata)
+{
+    if (!pixeldata || w <= 0 || h <= 0 || (c != 3 && c != 4))
+        return 0;
+
+    unsigned char* outbuf = NULL;
+    unsigned long outlen = 0;
+
+    if (!jpeg_compress_core(w, h, c, pixeldata, &outbuf, &outlen))
+    {
+        if (outbuf)
+            free(outbuf);
+        return 0;
+    }
+
+    if (!outbuf || outlen == 0 || outlen > static_cast<unsigned long>(INT_MAX))
+    {
+        if (outbuf)
+            free(outbuf);
+        return 0;
+    }
+
+    v.out = outbuf;
+    v.outSize = static_cast<int>(outlen);
     return 1;
 }
 
 bool load_jpeg(Task& v)
 {
-    unsigned char* pixeldata = 0;
-    bool ok = true;
-    void* result = 0;
-    int w = 0, h = 0, c = 0;
-    pixeldata = jpeg_load_memery((unsigned char*)v.fileDate, v.fileSize, &w, &h, &c, v.auto_transfom);
-    if (!pixeldata)
+    if (!is_jpeg_data(v.fileDate, v.fileSize))
+        return false;
+
+    ncnn::Mat* mat = nullptr;
+    jpeg_decode_out out = { 0, 0, 1 };
+
+    if (!jpeg_decompress_core(static_cast<const unsigned char*>(v.fileDate), v.fileSize,
+                              v.auto_transfom, &jpeg_alloc_mat_cb, &mat, &out))
     {
+        if (mat)
+            delete mat;
         return false;
     }
-    ncnn::Mat* inimage = new ncnn::Mat();
-    inimage->create(w, h, (size_t)c, c);
-    memcpy(inimage->data, pixeldata, w * h * c);
-    v.inImage.push_back(inimage);
+
+    if (out.orientation != 1)
+    {
+        int out_w = out.width;
+        int out_h = out.height;
+        uint8_t* rotated = apply_orientation(static_cast<const uint8_t*>(mat->data), out_w, out_h, 3, out.orientation);
+        if (rotated != nullptr)
+        {
+            ncnn::Mat* rotated_mat = new ncnn::Mat();
+            rotated_mat->create(out_w, out_h, static_cast<size_t>(3), 3);
+            if (rotated_mat->empty())
+            {
+                free(rotated);
+                delete rotated_mat;
+                delete mat;
+                return false;
+            }
+            std::memcpy(rotated_mat->data, rotated, static_cast<size_t>(out_w) * static_cast<size_t>(out_h) * 3);
+            free(rotated);
+            delete mat;
+            mat = rotated_mat;
+        }
+    }
+
+    v.inImage.push_back(mat);
     v.inFrame.push_back(100);
-    if (pixeldata) stbi_image_free(pixeldata);
     if (v.save_format.length() == 0) v.save_format = "jpg";
     v.load_format = "jpg";
     return true;

@@ -5,150 +5,107 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <cstring>
+#include <limits.h>
 #include "webp/decode.h"
 #include "webp/encode.h"
 #include "webp/demux.h"
 #include "webp/mux.h"
 #include "common_image.h"
 
-bool load_webp(Task &v)
+static inline bool is_webp_data(const void* data, int size)
 {
-    uint8_t* pixeldata = 0;
-    uint8_t * finalPixeldata = 0;
-    WebPData webp_data = { (const uint8_t*)v.fileDate, static_cast<size_t>(v.fileSize)};
-    WebPDemuxer* demux = WebPDemux(&webp_data);
-    if (!demux)
+    if (!data || size < 12)
         return false;
-
-    uint32_t flags = WebPDemuxGetI(demux, WEBP_FF_FORMAT_FLAGS);
-    if (flags & ANIMATION_FLAG)
-    {
-        WebPDemuxDelete(demux);
-        return false;
-    }
-
-    int orientation = 1;
-    if (v.auto_transfom && (flags & EXIF_FLAG))
-    {
-        WebPChunkIterator chunk_iter;
-        if (WebPDemuxGetChunk(demux, "EXIF", 1, &chunk_iter))
-        {
-            const uint8_t* exif_bytes = chunk_iter.chunk.bytes;
-            size_t exif_size = chunk_iter.chunk.size;
-            if (exif_size > 6 && std::memcmp(exif_bytes, "Exif\0\0", 6) == 0)
-            {
-                exif_bytes += 6;
-                exif_size -= 6;
-            }
-            orientation = parse_tiff_exif_orientation(exif_bytes, exif_size);
-            WebPDemuxReleaseChunkIterator(&chunk_iter);
-        }
-    }
-    WebPDemuxDelete(demux);
-
-    WebPDecoderConfig config;
-    if (!WebPInitDecoderConfig(&config))
-        return false;
-
-    if (WebPGetFeatures((uint8_t *)v.fileDate, v.fileSize, &config.input) != VP8_STATUS_OK)
-        return false;
-
-    int width = config.input.width;
-    int height = config.input.height;
-    int channels = config.input.has_alpha ? 4 : 3;
-
-    size_t stride = (size_t)width * channels;
-    size_t buf_size = stride * (size_t) height;
-
-    pixeldata = (uint8_t *) malloc(buf_size);
-    if (!pixeldata)
-        return false;
-
-    config.output.colorspace = (channels == 4) ? MODE_RGBA : MODE_RGB;
-    config.output.u.RGBA.stride = static_cast<int>(stride);
-    config.output.u.RGBA.size = buf_size;
-    config.output.u.RGBA.rgba = pixeldata;
-    config.output.is_external_memory = 1;
-
-    VP8StatusCode code = WebPDecode((uint8_t*)v.fileDate, v.fileSize, &config);
-    WebPFreeDecBuffer(&config.output);
-
-    if (code != VP8_STATUS_OK)
-    {
-        free(pixeldata);
-        return false;
-    }
-    if (orientation != 1)
-    {
-        finalPixeldata = apply_orientation(pixeldata, width, height, channels, orientation);
-    }
-    ncnn::Mat* inimage;
-    if (finalPixeldata != nullptr && finalPixeldata != pixeldata) {
-        free(pixeldata);
-        inimage = new ncnn::Mat(width, height, (void*)finalPixeldata, (size_t)channels, channels);
-    }
-    else {
-        inimage = new ncnn::Mat(width, height, (void*)pixeldata, (size_t)channels, channels);
-    }
-    v.inImage.push_back(inimage);
-    v.inFrame.push_back(100);
-    if (v.save_format.length() == 0) v.save_format = "webp";
-    v.load_format = "webp";
-    return true;
+    const uint8_t* bytes = static_cast<const uint8_t*>(data);
+    return std::memcmp(bytes, "RIFF", 4) == 0 && std::memcmp(bytes + 8, "WEBP", 4) == 0;
 }
 
-bool load_webp_ani(Task& v)
+static inline bool webp_init_config(WebPConfig& config, int webp_quality)
+{
+    float quality = static_cast<float>(webp_quality < 0 ? 0 : (webp_quality > 100 ? 100 : webp_quality));
+    if (!WebPConfigPreset(&config, WEBP_PRESET_DEFAULT, quality))
+        return false;
+    config.lossless = 0;
+    return WebPValidateConfig(&config) != 0;
+}
+
+static bool load_webp_ani_impl(Task& v, bool has_alpha)
 {
     bool ok = false;
     uint32_t frame_index = 0;
     int prev_frame_timestamp = 0;
-    WebPAnimDecoder* dec;
+    WebPAnimDecoder* dec = NULL;
     WebPAnimInfo anim_info;
     WebPAnimDecoderOptions opt;
-    const int kNumChannels = 4;
-    int webp_status = 0;
-    WebPDecoderConfig decoder_config;
-    int duration, timestamp;
+    const int out_channels = has_alpha ? 4 : 3;
 
-    memset(&opt, 0, sizeof(opt));
-    const WebPData webp_data = {(unsigned char*) v.fileDate, (size_t)v.fileSize };
+    if (!WebPAnimDecoderOptionsInit(&opt))
+        return false;
 
+    const WebPData webp_data = { static_cast<const uint8_t*>(v.fileDate), static_cast<size_t>(v.fileSize) };
     opt.color_mode = MODE_RGBA;
     opt.use_threads = 0;
     dec = WebPAnimDecoderNew(&webp_data, &opt);
-    if (dec == NULL) {
-        //WFPRINTF(stderr, "Error parsing image: %s\n", (const W_CHAR*)filename);
+    if (dec == NULL)
         goto End;
-    }
-    // Main object storing the configuration for advanced decoding
-    // Initialize the configuration as empty
-    // This function must always be called first, unless WebPGetFeatures() is to be called
-    if (!WebPInitDecoderConfig(&decoder_config)) {
-        goto End;
-    }
-    webp_status = WebPGetFeatures(webp_data.bytes, webp_data.size, &decoder_config.input);
-    if (webp_status != VP8_STATUS_OK) {
-        goto End;
-    }
-    if (!WebPAnimDecoderGetInfo(dec, &anim_info)) {
+
+    if (!WebPAnimDecoderGetInfo(dec, &anim_info))
+    {
         fprintf(stderr, "Error getting global info about the animation\n");
         goto End;
     }
-    while (WebPAnimDecoderHasMoreFrames(dec)) {
-        //DecodedFrame* curr_frame;
-        uint8_t* frame_rgba;
 
-        if (!WebPAnimDecoderGetNext(dec, &frame_rgba, &timestamp)) {
+    if (anim_info.canvas_width == 0 || anim_info.canvas_height == 0 ||
+        anim_info.canvas_width > static_cast<uint32_t>(INT_MAX) ||
+        anim_info.canvas_height > static_cast<uint32_t>(INT_MAX))
+    {
+        goto End;
+    }
+
+    while (WebPAnimDecoderHasMoreFrames(dec))
+    {
+        uint8_t* frame_rgba = NULL;
+        int timestamp = 0;
+
+        if (!WebPAnimDecoderGetNext(dec, &frame_rgba, &timestamp))
+        {
             fprintf(stderr, "Error decoding frame #%u\n", frame_index);
             goto End;
         }
-        // assert(frame_index < anim_info.frame_count);
-        duration = timestamp - prev_frame_timestamp;
-        
+
+        int duration = timestamp - prev_frame_timestamp;
+        if (duration < 0)
+            duration = 0;
+
         ncnn::Mat* inimage = new ncnn::Mat();
-        inimage->create(anim_info.canvas_width, anim_info.canvas_height, (size_t)kNumChannels, kNumChannels);
-        memcpy(inimage->data, frame_rgba,
-            anim_info.canvas_width * kNumChannels * anim_info.canvas_height);
+        inimage->create(static_cast<int>(anim_info.canvas_width),
+                        static_cast<int>(anim_info.canvas_height),
+                        static_cast<size_t>(out_channels),
+                        out_channels);
+        if (inimage->empty())
+        {
+            delete inimage;
+            goto End;
+        }
+
+        const size_t num_pixels = static_cast<size_t>(anim_info.canvas_width) * static_cast<size_t>(anim_info.canvas_height);
+        if (out_channels == 4)
+        {
+            std::memcpy(inimage->data, frame_rgba, num_pixels * 4);
+        }
+        else
+        {
+            const uint8_t* src = frame_rgba;
+            uint8_t* dst = static_cast<uint8_t*>(inimage->data);
+            for (size_t p = 0; p < num_pixels; ++p)
+            {
+                dst[0] = src[0];
+                dst[1] = src[1];
+                dst[2] = src[2];
+                src += 4;
+                dst += 3;
+            }
+        }
 
         v.inImage.push_back(inimage);
         v.inFrame.push_back(duration);
@@ -156,183 +113,333 @@ bool load_webp_ani(Task& v)
         ++frame_index;
         prev_frame_timestamp = timestamp;
     }
+
+    if (frame_index == 0)
+        goto End;
+
     if (v.save_format.length() == 0) v.save_format = "webp";
     v.load_format = "webp";
     ok = true;
+
 End:
-    WebPAnimDecoderDelete(dec);
+    if (!ok)
+    {
+        v.clear_in_image();
+        v.inFrame.clear();
+    }
+    if (dec)
+        WebPAnimDecoderDelete(dec);
     return ok;
 }
 
-//bool webp_save_ani2(Task& v)
-//{
-//    const char* output = NULL;
-//    WebPAnimEncoder* enc = NULL;
-//    int verbose = 0;
-//    int pic_num = 0;
-//    int duration = 100;
-//    int timestamp_ms = 0;
-//    int loop_count = 0;
-//    int width = 0, height = 0;
-//    WebPAnimEncoderOptions anim_config;
-//    WebPConfig config;
-//    WebPPicture pic;
-//    WebPData webp_data;
-//    int c;
-//    int have_input = 0;
-//    CommandLineArguments cmd_args;
-//    int ok;
-//
-//    config.lossless = 1;
-//    enc = WebPAnimEncoderNew(width, height, &anim_config);
-//    ok = WebPAnimEncoderAdd(enc, &pic, timestamp_ms, &config);
-//}
-unsigned int webp_encode(ncnn::Mat& outimage, unsigned int toW, unsigned int toH, int webp_quality, uint8_t** out)
+bool load_webp_ani(Task& v)
 {
-    unsigned int len = 0;
-    if (outimage.elemsize != 3 && outimage.elemsize != 4)
-    {
-        goto RETURN;
-    }
-    if (outimage.w != toW || outimage.h != toH)
-    {
-        WebPConfig config;
-        if (!WebPConfigPreset(&config, WEBP_PRESET_PHOTO, webp_quality)) {
-            return 0;   // version error
-        }
-        // ... additional tuning
-        config.lossless = !!0;
+    if (!is_webp_data(v.fileDate, v.fileSize))
+        return false;
 
-        // Setup the input data
-        WebPPicture pic;
-        if (!WebPPictureInit(&pic)) {
-            return 0;  // version error
-        }
-        pic.use_argb = !!0;
-        pic.width = outimage.w;
-        pic.height = outimage.h;
-        // allocated picture of dimension width x height
-        if (!WebPPictureAlloc(&pic)) {
-            goto RETURN;
-        }
+    const WebPData webp_data = { static_cast<const uint8_t*>(v.fileDate), static_cast<size_t>(v.fileSize) };
+    WebPDemuxer* demux = WebPDemux(&webp_data);
+    if (!demux)
+        return false;
 
-        WebPMemoryWriter wrt;
-        WebPMemoryWriterInit(&wrt);     // initialize 'wrt'
-
-        pic.writer = WebPMemoryWrite;
-        pic.custom_ptr = &wrt;
-
-        // Compress!
-        if (outimage.elemsize == 3)
-        {
-            WebPPictureImportRGB(&pic, (unsigned char*)outimage.data, outimage.w * (int)outimage.elemsize);
-        }
-        else if (outimage.elemsize == 4) {
-            WebPPictureImportRGBA(&pic, (unsigned char*)outimage.data, outimage.w * (int)outimage.elemsize);
-        }
-        WebPPictureRescale(&pic, toW, toH);
-
-        int ok = WebPEncode(&config, &pic);   // ok = 0 => error occurred!
-        WebPPictureFree(&pic);  // must be called independently of the 'ok' result.
-
-        if (!ok) {
-            WebPMemoryWriterClear(&wrt);
-            goto RETURN;
-        }
-        *out = wrt.mem;
-        len = wrt.size;
-    }
-    else {
-        if (outimage.elemsize == 3)
-        {
-            len = WebPEncodeRGB((unsigned char*)outimage.data, outimage.w, outimage.h, outimage.w * (int)outimage.elemsize, webp_quality, out);
-        }
-        else if (outimage.elemsize == 4)
-        {
-            len = WebPEncodeRGBA((unsigned char*)outimage.data, outimage.w, outimage.h, outimage.w * (int)outimage.elemsize, webp_quality, out);
-        }
-    }
-RETURN:
-    return len;
+    uint32_t flags = WebPDemuxGetI(demux, WEBP_FF_FORMAT_FLAGS);
+    WebPDemuxDelete(demux);
+    return load_webp_ani_impl(v, (flags & ALPHA_FLAG) != 0);
 }
 
-bool webp_save_ani(Task &v)
+bool load_webp(Task& v)
 {
-    bool ok = false;
-    WebPMuxError err;
+    if (!is_webp_data(v.fileDate, v.fileSize))
+        return false;
 
-    WebPMuxFrameInfo frame;
-    frame.x_offset = 0;
-    frame.y_offset = 0;
-    frame.id = WEBP_CHUNK_ANMF;
-    frame.dispose_method = WEBP_MUX_DISPOSE_NONE;
-    frame.blend_method = WEBP_MUX_NO_BLEND;
-    
-    uint8_t* outb = 0;
-    size_t size = 0;
-    WebPMuxAnimParams params;
-    WebPData outputData;
-    std::list<int>::iterator j;
-    std::list<ncnn::Mat*>::iterator i;
-    WebPMux* mux = WebPMuxNew();
-    if (!mux) {
-        goto End;
-    }
-    for (i = v.outImage.begin(), j = v.inFrame.begin(); i != v.outImage.end(); i++, j++)
+    const WebPData webp_data = { static_cast<const uint8_t*>(v.fileDate), static_cast<size_t>(v.fileSize) };
+    WebPDemuxer* demux = WebPDemux(&webp_data);
+    if (!demux)
+        return false;
+
+    uint32_t flags = WebPDemuxGetI(demux, WEBP_FF_FORMAT_FLAGS);
+    if (flags & ANIMATION_FLAG)
     {
-        ncnn::Mat & inimage = **i;
-        int duration= *j;
-        size = webp_encode(inimage, v.toW, v.toH, v.webp_quality, &outb);
+        bool has_alpha = (flags & ALPHA_FLAG) != 0;
+        WebPDemuxDelete(demux);
+        return load_webp_ani_impl(v, has_alpha);
+    }
 
-        const WebPData webp_data = { outb, size };
-        frame.duration = duration;
-        frame.bitstream = webp_data;
-        err = WebPMuxPushFrame(mux, &frame, 0);
-        if(err != WEBP_MUX_OK)
+    uint32_t canvas_w = WebPDemuxGetI(demux, WEBP_FF_CANVAS_WIDTH);
+    uint32_t canvas_h = WebPDemuxGetI(demux, WEBP_FF_CANVAS_HEIGHT);
+    int channels = (flags & ALPHA_FLAG) ? 4 : 3;
+
+    int orientation = 1;
+    if (v.auto_transfom && (flags & EXIF_FLAG))
+    {
+        WebPChunkIterator chunk_iter;
+        if (WebPDemuxGetChunk(demux, "EXIF", 1, &chunk_iter))
         {
+            orientation = get_exif_orientation(chunk_iter.chunk.bytes, chunk_iter.chunk.size);
+            WebPDemuxReleaseChunkIterator(&chunk_iter);
+        }
+    }
+    WebPDemuxDelete(demux);
+
+    if (canvas_w == 0 || canvas_h == 0 ||
+        canvas_w > static_cast<uint32_t>(INT_MAX) ||
+        canvas_h > static_cast<uint32_t>(INT_MAX))
+    {
+        return false;
+    }
+
+    int width = static_cast<int>(canvas_w);
+    int height = static_cast<int>(canvas_h);
+    size_t stride = static_cast<size_t>(width) * static_cast<size_t>(channels);
+    if (stride > static_cast<size_t>(INT_MAX))
+        return false;
+    size_t buf_size = stride * static_cast<size_t>(height);
+
+    WebPDecoderConfig config;
+    if (!WebPInitDecoderConfig(&config))
+        return false;
+
+    ncnn::Mat* inimage = new ncnn::Mat();
+    inimage->create(width, height, static_cast<size_t>(channels), channels);
+    if (inimage->empty())
+    {
+        delete inimage;
+        return false;
+    }
+
+    config.output.colorspace = (channels == 4) ? MODE_RGBA : MODE_RGB;
+    config.output.u.RGBA.stride = static_cast<int>(stride);
+    config.output.u.RGBA.size = buf_size;
+    config.output.u.RGBA.rgba = static_cast<uint8_t*>(inimage->data);
+    config.output.is_external_memory = 1;
+
+    VP8StatusCode code = WebPDecode(static_cast<const uint8_t*>(v.fileDate), static_cast<size_t>(v.fileSize), &config);
+    WebPFreeDecBuffer(&config.output);
+
+    if (code != VP8_STATUS_OK)
+    {
+        delete inimage;
+        return false;
+    }
+
+    if (orientation != 1)
+    {
+        int out_w = width;
+        int out_h = height;
+        uint8_t* rotated = apply_orientation(static_cast<const uint8_t*>(inimage->data), out_w, out_h, channels, orientation);
+        if (rotated != nullptr)
+        {
+            ncnn::Mat* rotated_mat = new ncnn::Mat();
+            rotated_mat->create(out_w, out_h, static_cast<size_t>(channels), channels);
+            if (rotated_mat->empty())
+            {
+                free(rotated);
+                delete rotated_mat;
+                delete inimage;
+                return false;
+            }
+            std::memcpy(rotated_mat->data, rotated,
+                        static_cast<size_t>(out_w) * static_cast<size_t>(out_h) * static_cast<size_t>(channels));
+            free(rotated);
+            delete inimage;
+            inimage = rotated_mat;
+        }
+    }
+
+    v.inImage.push_back(inimage);
+    v.inFrame.push_back(100);
+    if (v.save_format.length() == 0) v.save_format = "webp";
+    v.load_format = "webp";
+    return true;
+}
+
+size_t webp_encode(ncnn::Mat& outimage, unsigned int toW, unsigned int toH, int webp_quality, uint8_t** out)
+{
+    if (!out)
+        return 0;
+    *out = nullptr;
+
+    if (outimage.empty() || outimage.w <= 0 || outimage.h <= 0)
+        return 0;
+    if (outimage.elemsize != 3 && outimage.elemsize != 4)
+        return 0;
+
+    WebPConfig config;
+    if (!webp_init_config(config, webp_quality))
+        return 0;
+
+    WebPPicture pic;
+    if (!WebPPictureInit(&pic))
+        return 0;
+
+    pic.use_argb = 0;
+    pic.width = outimage.w;
+    pic.height = outimage.h;
+
+    int stride = outimage.w * static_cast<int>(outimage.elemsize);
+    int import_ok = (outimage.elemsize == 3)
+        ? WebPPictureImportRGB(&pic, static_cast<const uint8_t*>(outimage.data), stride)
+        : WebPPictureImportRGBA(&pic, static_cast<const uint8_t*>(outimage.data), stride);
+    if (!import_ok)
+    {
+        WebPPictureFree(&pic);
+        return 0;
+    }
+
+    if (toW > 0 && toH > 0 &&
+        (static_cast<unsigned int>(outimage.w) != toW || static_cast<unsigned int>(outimage.h) != toH))
+    {
+        if (!WebPPictureRescale(&pic, static_cast<int>(toW), static_cast<int>(toH)))
+        {
+            WebPPictureFree(&pic);
+            return 0;
+        }
+    }
+
+    WebPMemoryWriter wrt;
+    WebPMemoryWriterInit(&wrt);
+    pic.writer = WebPMemoryWrite;
+    pic.custom_ptr = &wrt;
+
+    int ok = WebPEncode(&config, &pic);
+    WebPPictureFree(&pic);
+
+    if (!ok)
+    {
+        WebPMemoryWriterClear(&wrt);
+        return 0;
+    }
+
+    *out = wrt.mem;
+    return wrt.size;
+}
+
+bool webp_save_ani(Task& v)
+{
+    if (v.outImage.empty())
+        return false;
+
+    ncnn::Mat* first_ptr = *v.outImage.begin();
+    if (!first_ptr || first_ptr->empty() || first_ptr->w <= 0 || first_ptr->h <= 0 ||
+        (first_ptr->elemsize != 3 && first_ptr->elemsize != 4))
+    {
+        return false;
+    }
+
+    int canvas_w = (v.toW > 0 && v.toH > 0) ? static_cast<int>(v.toW) : first_ptr->w;
+    int canvas_h = (v.toW > 0 && v.toH > 0) ? static_cast<int>(v.toH) : first_ptr->h;
+
+    WebPConfig config;
+    if (!webp_init_config(config, v.webp_quality))
+        return false;
+
+    WebPAnimEncoderOptions anim_options;
+    if (!WebPAnimEncoderOptionsInit(&anim_options))
+        return false;
+    anim_options.anim_params.bgcolor = 0;
+    anim_options.anim_params.loop_count = 0;
+
+    WebPAnimEncoder* enc = WebPAnimEncoderNew(canvas_w, canvas_h, &anim_options);
+    if (!enc)
+        return false;
+
+    bool ok = false;
+    int timestamp_ms = 0;
+    WebPData outputData;
+    WebPDataInit(&outputData);
+
+    std::list<ncnn::Mat*>::iterator i = v.outImage.begin();
+    std::list<int>::iterator j = v.inFrame.begin();
+    for (; i != v.outImage.end(); ++i)
+    {
+        if (!*i || (*i)->empty())
+            goto End;
+
+        ncnn::Mat& frame = **i;
+        if (frame.w <= 0 || frame.h <= 0 || (frame.elemsize != 3 && frame.elemsize != 4))
+            goto End;
+
+        int duration = 100;
+        if (j != v.inFrame.end())
+        {
+            duration = (*j > 0) ? *j : 0;
+            ++j;
+        }
+
+        WebPPicture pic;
+        if (!WebPPictureInit(&pic))
+            goto End;
+
+        // WebPAnimEncoderAdd works in ARGB internally; importing directly avoids lossy YUV->ARGB conversion
+        pic.use_argb = 1;
+        pic.width = frame.w;
+        pic.height = frame.h;
+
+        int stride = frame.w * static_cast<int>(frame.elemsize);
+        int import_ok = (frame.elemsize == 3)
+            ? WebPPictureImportRGB(&pic, static_cast<const uint8_t*>(frame.data), stride)
+            : WebPPictureImportRGBA(&pic, static_cast<const uint8_t*>(frame.data), stride);
+        if (!import_ok)
+        {
+            WebPPictureFree(&pic);
             goto End;
         }
-    }
-    err = WebPMuxSetCanvasSize(mux, v.toW, v.toH);
-    if (err != WEBP_MUX_OK) goto End;
 
-    params.bgcolor = 0;
-    params.loop_count = 0;
-    WebPMuxSetAnimationParams(mux, &params);
-    err = WebPMuxAssemble(mux, &outputData);
-    if (err != WEBP_MUX_OK) {
+        if (pic.width != canvas_w || pic.height != canvas_h)
+        {
+            if (!WebPPictureRescale(&pic, canvas_w, canvas_h))
+            {
+                WebPPictureFree(&pic);
+                goto End;
+            }
+        }
+
+        int add_ok = WebPAnimEncoderAdd(enc, &pic, timestamp_ms, &config);
+        WebPPictureFree(&pic);
+        if (!add_ok)
+            goto End;
+
+        timestamp_ms += duration;
+    }
+
+    if (!WebPAnimEncoderAdd(enc, NULL, timestamp_ms, NULL))
         goto End;
-    }
 
-    v.out = (void *)outputData.bytes;
-    v.outSize = (int)outputData.size;
+    if (!WebPAnimEncoderAssemble(enc, &outputData))
+        goto End;
+
+    v.out = (void*)outputData.bytes;
+    v.outSize = static_cast<int>(outputData.size);
     ok = true;
+
 End:
-    WebPMuxDelete(mux);
+    if (!ok)
+        WebPDataClear(&outputData);
+    WebPAnimEncoderDelete(enc);
     return ok;
 }
 
-bool webp_save(Task &v)
+bool webp_save(Task& v)
 {
-    bool ok = false;
+    if (v.outImage.empty())
+        return false;
 
-    size_t length = 0;
-    unsigned char* output = 0;
-    ncnn::Mat& outimage = **v.outImage.begin();
+    ncnn::Mat* out_ptr = *v.outImage.begin();
+    if (!out_ptr || out_ptr->empty())
+        return false;
+
+    ncnn::Mat& outimage = *out_ptr;
     if (outimage.elemsize != 3 && outimage.elemsize != 4)
-    {
-        goto RETURN;
-    }
-    length = webp_encode(outimage, v.toW, v.toH, v.webp_quality, &output);
-    if (length == 0)
-        goto RETURN;
+        return false;
+
+    uint8_t* output = nullptr;
+    size_t length = webp_encode(outimage, v.toW, v.toH, v.webp_quality, &output);
+    if (length == 0 || !output)
+        return false;
 
     v.out = (void*)output;
-    v.outSize = (int)length;
-    ok = true;
-    
-RETURN:
-    return ok;
+    v.outSize = static_cast<int>(length);
+    return true;
 }
 
 #endif // WEBP_IMAGE_H

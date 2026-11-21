@@ -52,7 +52,7 @@ else()
     endif()
 endif()
 
-set(CMAKE_POSITION_INDEPENDENT_CODED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
 include(CheckIPOSupported)

@@ -13,6 +13,7 @@
 class SuperResolution
 {
 public:
+    virtual ~SuperResolution() = default;
     virtual int process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize = 0) const { return -1; };
 
 public:

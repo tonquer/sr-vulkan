@@ -119,7 +119,7 @@ int RealESRGAN::load(const std::string& parampath, const std::string& modelpath)
     {
         std::vector<ncnn::vk_specialization_type> specializations(1);
 #if _WIN32
-        specializations[0].i = 1;
+        specializations[0].i = 0;  // rgb
 #else
         specializations[0].i = 0;
 #endif
@@ -244,7 +244,7 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
         ncnn::Mat in;
         if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
         {
-            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + in_tile_y0 * w * channels, (size_t)channels, 1);
+            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + (size_t)in_tile_y0 * w * channels, (size_t)channels, 1);
         }
         else
         {
@@ -253,7 +253,7 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
 //#if _WIN32
                 //in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGR2RGB, w, (in_tile_y1 - in_tile_y0));
 //#else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
 //#endif
             }
             if (channels == 4)
@@ -261,7 +261,7 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
 //#if _WIN32
                 //in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGRA2RGBA, w, (in_tile_y1 - in_tile_y0));
 //#else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
 //#endif
             }
         }
@@ -320,7 +320,7 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(10);
@@ -452,7 +452,7 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(3);
@@ -504,6 +504,11 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
                     {
                         out_alpha_tile_gpu = in_alpha_tile_gpu;
                     }
+                    else
+                    {
+                        cmd.submit_and_wait();
+                        cmd.reset();
+                    }
                     if (scale == 2)
                     {
                         bicubic_2x->forward(in_alpha_tile_gpu, out_alpha_tile_gpu, cmd, opt);
@@ -554,8 +559,6 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
                 cmd.submit_and_wait();
                 cmd.reset();
             }
-
-            fprintf(stderr, "%.2f%%\n", (float)(yi * xtiles + xi) / (ytiles * xtiles) * 100);
         }
 
         // download
@@ -564,7 +567,7 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
 
             if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
             {
-                out = ncnn::Mat(out_gpu.w, out_gpu.h, (unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, (size_t)channels, 1);
+                out = ncnn::Mat(out_gpu.w, out_gpu.h, (unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, (size_t)channels, 1);
             }
 
             cmd.record_clone(out_gpu, out, opt);
@@ -578,7 +581,7 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
 //#if _WIN32
                     //out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB2BGR);
 //#else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB);
 //#endif
                 }
                 if (channels == 4)
@@ -586,7 +589,7 @@ int RealESRGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tiles
 //#if _WIN32
                     //out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA2BGRA);
 //#else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA);
 //#endif
                 }
             }

@@ -81,6 +81,7 @@ RealCUGAN::~RealCUGAN()
     {
         delete realcugan_preproc;
         delete realcugan_postproc;
+        delete realcugan_4x_postproc;
     }
     if (bicubic_2x != nullptr)
     {
@@ -150,7 +151,7 @@ int RealCUGAN::load(const std::string& parampath, const std::string& modelpath)
     {
         std::vector<ncnn::vk_specialization_type> specializations(1);
 #if _WIN32
-        specializations[0].i = 1;
+        specializations[0].i = 0;  // rgb
 #else
         specializations[0].i = 0;
 #endif
@@ -267,7 +268,8 @@ int RealCUGAN::load(const std::string& parampath, const std::string& modelpath)
 
 int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize) const
 {
-    bool syncgap_needed = tilesize < std::max(inimage.w, inimage.h);
+    const int effective_tilesize = (tileSize > 0) ? tileSize : tilesize;
+    bool syncgap_needed = effective_tilesize < std::max(inimage.w, inimage.h);
 
     if (!vkdev)
     {
@@ -275,14 +277,14 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
         if (syncgap_needed && syncgap)
         {
             if (syncgap == 1)
-                return process_cpu_se(inimage, outimage);
+                return process_cpu_se(inimage, outimage, effective_tilesize);
             if (syncgap == 2)
-                return process_cpu_se_rough(inimage, outimage);
+                return process_cpu_se_rough(inimage, outimage, effective_tilesize);
             if (syncgap == 3)
-                return process_cpu_se_very_rough(inimage, outimage);
+                return process_cpu_se_very_rough(inimage, outimage, effective_tilesize);
         }
         else
-            return process_cpu(inimage, outimage, tileSize);
+            return process_cpu(inimage, outimage, effective_tilesize);
     }
 
     if (noise == -1 && scale == 1)
@@ -294,11 +296,11 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
     if (syncgap_needed && syncgap)
     {
         if (syncgap == 1)
-            return process_se(inimage, outimage);
+            return process_se(inimage, outimage, effective_tilesize);
         if (syncgap == 2)
-            return process_se_rough(inimage, outimage);
+            return process_se_rough(inimage, outimage, effective_tilesize);
         if (syncgap == 3)
-            return process_se_very_rough(inimage, outimage);
+            return process_se_very_rough(inimage, outimage, effective_tilesize);
     }
 
     const unsigned char* pixeldata = (const unsigned char*)inimage.data;
@@ -306,8 +308,8 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
     const int h = inimage.h;
     const int channels = inimage.elempack;
 
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int TILE_SIZE_X = effective_tilesize;
+    const int TILE_SIZE_Y = effective_tilesize;
 
     ncnn::VkAllocator* blob_vkallocator = vkdev->acquire_blob_allocator();
     ncnn::VkAllocator* staging_vkallocator = vkdev->acquire_staging_allocator();
@@ -344,7 +346,7 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
         ncnn::Mat in;
         if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
         {
-            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + in_tile_y0 * w * channels, (size_t)channels, 1);
+            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + (size_t)in_tile_y0 * w * channels, (size_t)channels, 1);
         }
         else
         {
@@ -353,7 +355,7 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
 // #if _WIN32
                 // in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGR2RGB, w, (in_tile_y1 - in_tile_y0));
 // #else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
 // #endif
             }
             if (channels == 4)
@@ -361,7 +363,7 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
 // #if _WIN32
                 // in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGRA2RGBA, w, (in_tile_y1 - in_tile_y0));
 // #else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
 // #endif
             }
         }
@@ -430,7 +432,7 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(10);
@@ -481,6 +483,9 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
                     ex.input("in0", in_tile_gpu[ti]);
 
                     ex.extract("out0", out_tile_gpu[ti], cmd);
+
+                    cmd.submit_and_wait();
+                    cmd.reset();
                 }
 
                 ncnn::VkMat out_alpha_tile_gpu;
@@ -596,7 +601,7 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(3);
@@ -647,6 +652,11 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
                     if (scale == 1)
                     {
                         out_alpha_tile_gpu = in_alpha_tile_gpu;
+                    }
+                    else
+                    {
+                        cmd.submit_and_wait();
+                        cmd.reset();
                     }
                     if (scale == 2)
                     {
@@ -738,7 +748,7 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
 
             if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
             {
-                out = ncnn::Mat(out_gpu.w, out_gpu.h, (unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, (size_t)channels, 1);
+                out = ncnn::Mat(out_gpu.w, out_gpu.h, (unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, (size_t)channels, 1);
             }
 
             cmd.record_clone(out_gpu, out, opt);
@@ -752,7 +762,7 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
 // #if _WIN32
                     // out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB2BGR);
 // #else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB);
 // #endif
                 }
                 if (channels == 4)
@@ -760,7 +770,7 @@ int RealCUGAN::process(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSi
 // #if _WIN32
                     // out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA2BGRA);
 // #else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA);
 // #endif
                 }
             }
@@ -786,8 +796,9 @@ int RealCUGAN::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int ti
     const int h = inimage.h;
     const int channels = inimage.elempack;
 
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int effective_tilesize = (tileSize > 0) ? tileSize : tilesize;
+    const int TILE_SIZE_X = effective_tilesize;
+    const int TILE_SIZE_Y = effective_tilesize;
 
     ncnn::Option opt = net.opt;
 
@@ -959,17 +970,29 @@ int RealCUGAN::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int ti
                     {
                         out_alpha_tile = in_alpha_tile;
                     }
-                    if (scale == 2)
+                    else
                     {
-                        bicubic_2x->forward(in_alpha_tile, out_alpha_tile, opt);
-                    }
-                    if (scale == 3)
-                    {
-                        bicubic_3x->forward(in_alpha_tile, out_alpha_tile, opt);
-                    }
-                    if (scale == 4)
-                    {
-                        bicubic_4x->forward(in_alpha_tile, out_alpha_tile, opt);
+                        ncnn::Mat alpha_in = in_alpha_tile;
+                        int alpha_pad_right = std::max(4 - alpha_in.w, 0);
+                        int alpha_pad_bottom = std::max(4 - alpha_in.h, 0);
+                        if (alpha_pad_right > 0 || alpha_pad_bottom > 0)
+                        {
+                            ncnn::Mat alpha_padded;
+                            ncnn::copy_make_border(alpha_in, alpha_padded, 0, alpha_pad_bottom, 0, alpha_pad_right, ncnn::BORDER_REPLICATE, 0.f, opt);
+                            alpha_in = alpha_padded;
+                        }
+                        if (scale == 2)
+                        {
+                            bicubic_2x->forward(alpha_in, out_alpha_tile, opt);
+                        }
+                        if (scale == 3)
+                        {
+                            bicubic_3x->forward(alpha_in, out_alpha_tile, opt);
+                        }
+                        if (scale == 4)
+                        {
+                            bicubic_4x->forward(alpha_in, out_alpha_tile, opt);
+                        }
                     }
                 }
 
@@ -1050,7 +1073,19 @@ int RealCUGAN::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int ti
 
                     if (channels == 4)
                     {
-                        memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
+                        if (out_alpha_tile.w == out.w && out_alpha_tile.h == out.h)
+                        {
+                            memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
+                        }
+                        else
+                        {
+                            ncnn::Mat dst_alpha = out.channel(3);
+                            const ncnn::Mat src_alpha = out_alpha_tile.channel(0);
+                            for (int i = 0; i < out.h; i++)
+                            {
+                                memcpy(dst_alpha.row(i), src_alpha.row(i), out.w * sizeof(float));
+                            }
+                        }
                     }
                 }
             }
@@ -1107,17 +1142,29 @@ int RealCUGAN::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int ti
                     {
                         out_alpha_tile = in_alpha_tile;
                     }
-                    if (scale == 2)
+                    else
                     {
-                        bicubic_2x->forward(in_alpha_tile, out_alpha_tile, opt);
-                    }
-                    if (scale == 3)
-                    {
-                        bicubic_3x->forward(in_alpha_tile, out_alpha_tile, opt);
-                    }
-                    if (scale == 4)
-                    {
-                        bicubic_4x->forward(in_alpha_tile, out_alpha_tile, opt);
+                        ncnn::Mat alpha_in = in_alpha_tile;
+                        int alpha_pad_right = std::max(4 - alpha_in.w, 0);
+                        int alpha_pad_bottom = std::max(4 - alpha_in.h, 0);
+                        if (alpha_pad_right > 0 || alpha_pad_bottom > 0)
+                        {
+                            ncnn::Mat alpha_padded;
+                            ncnn::copy_make_border(alpha_in, alpha_padded, 0, alpha_pad_bottom, 0, alpha_pad_right, ncnn::BORDER_REPLICATE, 0.f, opt);
+                            alpha_in = alpha_padded;
+                        }
+                        if (scale == 2)
+                        {
+                            bicubic_2x->forward(alpha_in, out_alpha_tile, opt);
+                        }
+                        if (scale == 3)
+                        {
+                            bicubic_3x->forward(alpha_in, out_alpha_tile, opt);
+                        }
+                        if (scale == 4)
+                        {
+                            bicubic_4x->forward(alpha_in, out_alpha_tile, opt);
+                        }
                     }
                 }
 
@@ -1162,7 +1209,19 @@ int RealCUGAN::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int ti
 
                     if (channels == 4)
                     {
-                        memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
+                        if (out_alpha_tile.w == out.w && out_alpha_tile.h == out.h)
+                        {
+                            memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
+                        }
+                        else
+                        {
+                            ncnn::Mat dst_alpha = out.channel(3);
+                            const ncnn::Mat src_alpha = out_alpha_tile.channel(0);
+                            for (int i = 0; i < out.h; i++)
+                            {
+                                memcpy(dst_alpha.row(i), src_alpha.row(i), out.w * sizeof(float));
+                            }
+                        }
                     }
                 }
             }
@@ -1173,7 +1232,7 @@ int RealCUGAN::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int ti
 // #if _WIN32
                     // out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB2BGR, w * scale * channels);
 // #else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB, w * scale * channels);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels + (size_t)xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB, w * scale * channels);
 // #endif
                 }
                 if (channels == 4)
@@ -1181,7 +1240,7 @@ int RealCUGAN::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int ti
 // #if _WIN32
                     // out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA2BGRA, w * scale * channels);
 // #else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA, w * scale * channels);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels + (size_t)xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA, w * scale * channels);
 // #endif
                 }
             }
@@ -1191,7 +1250,7 @@ int RealCUGAN::process_cpu(const ncnn::Mat& inimage, ncnn::Mat& outimage, int ti
     return 0;
 }
 
-int RealCUGAN::process_se(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
+int RealCUGAN::process_se(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize) const
 {
     ncnn::VkAllocator* blob_vkallocator = vkdev->acquire_blob_allocator();
     ncnn::VkAllocator* staging_vkallocator = vkdev->acquire_staging_allocator();
@@ -1205,34 +1264,34 @@ int RealCUGAN::process_se(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
 
     std::vector<std::string> in0 = {};
     std::vector<std::string> out0 = {"gap0"};
-    process_se_stage0(inimage, in0, out0, opt, cache);
+    process_se_stage0(inimage, in0, out0, opt, cache, tileSize);
 
     std::vector<std::string> gap0 = {"gap0"};
-    process_se_sync_gap(inimage, gap0, opt, cache);
+    process_se_sync_gap(inimage, gap0, opt, cache, tileSize);
 
     std::vector<std::string> in1 = {"gap0"};
     std::vector<std::string> out1 = {"gap1"};
-    process_se_stage0(inimage, in1, out1, opt, cache);
+    process_se_stage0(inimage, in1, out1, opt, cache, tileSize);
 
     std::vector<std::string> gap1 = {"gap1"};
-    process_se_sync_gap(inimage, gap1, opt, cache);
+    process_se_sync_gap(inimage, gap1, opt, cache, tileSize);
 
     std::vector<std::string> in2 = {"gap0", "gap1"};
     std::vector<std::string> out2 = {"gap2"};
-    process_se_stage0(inimage, in2, out2, opt, cache);
+    process_se_stage0(inimage, in2, out2, opt, cache, tileSize);
 
     std::vector<std::string> gap2 = {"gap2"};
-    process_se_sync_gap(inimage, gap2, opt, cache);
+    process_se_sync_gap(inimage, gap2, opt, cache, tileSize);
 
     std::vector<std::string> in3 = {"gap0", "gap1", "gap2"};
     std::vector<std::string> out3 = {"gap3"};
-    process_se_stage0(inimage, in3, out3, opt, cache);
+    process_se_stage0(inimage, in3, out3, opt, cache, tileSize);
 
     std::vector<std::string> gap3 = {"gap3"};
-    process_se_sync_gap(inimage, gap3, opt, cache);
+    process_se_sync_gap(inimage, gap3, opt, cache, tileSize);
 
     std::vector<std::string> in4 = {"gap0", "gap1", "gap2", "gap3"};
-    process_se_stage2(inimage, in4, outimage, opt, cache);
+    process_se_stage2(inimage, in4, outimage, opt, cache, tileSize);
 
     cache.clear();
 
@@ -1242,7 +1301,7 @@ int RealCUGAN::process_se(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
     return 0;
 }
 
-int RealCUGAN::process_se_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
+int RealCUGAN::process_se_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize) const
 {
     ncnn::VkAllocator* blob_vkallocator = vkdev->acquire_blob_allocator();
     ncnn::VkAllocator* staging_vkallocator = vkdev->acquire_staging_allocator();
@@ -1256,13 +1315,13 @@ int RealCUGAN::process_se_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage) c
 
     std::vector<std::string> in0 = {};
     std::vector<std::string> out0 = {"gap0", "gap1", "gap2", "gap3"};
-    process_se_stage0(inimage, in0, out0, opt, cache);
+    process_se_stage0(inimage, in0, out0, opt, cache, tileSize);
 
     std::vector<std::string> gap0 = {"gap0", "gap1", "gap2", "gap3"};
-    process_se_sync_gap(inimage, gap0, opt, cache);
+    process_se_sync_gap(inimage, gap0, opt, cache, tileSize);
 
     std::vector<std::string> in4 = {"gap0", "gap1", "gap2", "gap3"};
-    process_se_stage2(inimage, in4, outimage, opt, cache);
+    process_se_stage2(inimage, in4, outimage, opt, cache, tileSize);
 
     cache.clear();
 
@@ -1272,7 +1331,7 @@ int RealCUGAN::process_se_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage) c
     return 0;
 }
 
-int RealCUGAN::process_se_very_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
+int RealCUGAN::process_se_very_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize) const
 {
     ncnn::VkAllocator* blob_vkallocator = vkdev->acquire_blob_allocator();
     ncnn::VkAllocator* staging_vkallocator = vkdev->acquire_staging_allocator();
@@ -1292,7 +1351,7 @@ int RealCUGAN::process_se_very_rough(const ncnn::Mat& inimage, ncnn::Mat& outima
     process_se_very_rough_sync_gap(inimage, gap0, opt, cache);
 
     std::vector<std::string> in4 = {"gap0", "gap1", "gap2", "gap3"};
-    process_se_stage2(inimage, in4, outimage, opt, cache);
+    process_se_stage2(inimage, in4, outimage, opt, cache, tileSize);
 
     cache.clear();
 
@@ -1302,66 +1361,66 @@ int RealCUGAN::process_se_very_rough(const ncnn::Mat& inimage, ncnn::Mat& outima
     return 0;
 }
 
-int RealCUGAN::process_cpu_se(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
+int RealCUGAN::process_cpu_se(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize) const
 {
     FeatureCache cache;
 
     std::vector<std::string> in0 = {};
     std::vector<std::string> out0 = {"gap0"};
-    process_cpu_se_stage0(inimage, in0, out0, cache);
+    process_cpu_se_stage0(inimage, in0, out0, cache, tileSize);
 
     std::vector<std::string> gap0 = {"gap0"};
-    process_cpu_se_sync_gap(inimage, gap0, cache);
+    process_cpu_se_sync_gap(inimage, gap0, cache, tileSize);
 
     std::vector<std::string> in1 = {"gap0"};
     std::vector<std::string> out1 = {"gap1"};
-    process_cpu_se_stage0(inimage, in1, out1, cache);
+    process_cpu_se_stage0(inimage, in1, out1, cache, tileSize);
 
     std::vector<std::string> gap1 = {"gap1"};
-    process_cpu_se_sync_gap(inimage, gap1, cache);
+    process_cpu_se_sync_gap(inimage, gap1, cache, tileSize);
 
     std::vector<std::string> in2 = {"gap0", "gap1"};
     std::vector<std::string> out2 = {"gap2"};
-    process_cpu_se_stage0(inimage, in2, out2, cache);
+    process_cpu_se_stage0(inimage, in2, out2, cache, tileSize);
 
     std::vector<std::string> gap2 = {"gap2"};
-    process_cpu_se_sync_gap(inimage, gap2, cache);
+    process_cpu_se_sync_gap(inimage, gap2, cache, tileSize);
 
     std::vector<std::string> in3 = {"gap0", "gap1", "gap2"};
     std::vector<std::string> out3 = {"gap3"};
-    process_cpu_se_stage0(inimage, in3, out3, cache);
+    process_cpu_se_stage0(inimage, in3, out3, cache, tileSize);
 
     std::vector<std::string> gap3 = {"gap3"};
-    process_cpu_se_sync_gap(inimage, gap3, cache);
+    process_cpu_se_sync_gap(inimage, gap3, cache, tileSize);
 
     std::vector<std::string> in4 = {"gap0", "gap1", "gap2", "gap3"};
-    process_cpu_se_stage2(inimage, in4, outimage, cache);
+    process_cpu_se_stage2(inimage, in4, outimage, cache, tileSize);
 
     cache.clear();
 
     return 0;
 }
 
-int RealCUGAN::process_cpu_se_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
+int RealCUGAN::process_cpu_se_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize) const
 {
     FeatureCache cache;
 
     std::vector<std::string> in0 = {};
     std::vector<std::string> out0 = {"gap0", "gap1", "gap2", "gap3"};
-    process_cpu_se_stage0(inimage, in0, out0, cache);
+    process_cpu_se_stage0(inimage, in0, out0, cache, tileSize);
 
     std::vector<std::string> gap0 = {"gap0", "gap1", "gap2", "gap3"};
-    process_cpu_se_sync_gap(inimage, gap0, cache);
+    process_cpu_se_sync_gap(inimage, gap0, cache, tileSize);
 
     std::vector<std::string> in4 = {"gap0", "gap1", "gap2", "gap3"};
-    process_cpu_se_stage2(inimage, in4, outimage, cache);
+    process_cpu_se_stage2(inimage, in4, outimage, cache, tileSize);
 
     cache.clear();
 
     return 0;
 }
 
-int RealCUGAN::process_cpu_se_very_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage) const
+int RealCUGAN::process_cpu_se_very_rough(const ncnn::Mat& inimage, ncnn::Mat& outimage, int tileSize) const
 {
     FeatureCache cache;
 
@@ -1373,22 +1432,23 @@ int RealCUGAN::process_cpu_se_very_rough(const ncnn::Mat& inimage, ncnn::Mat& ou
     process_cpu_se_very_rough_sync_gap(inimage, gap0, cache);
 
     std::vector<std::string> in4 = {"gap0", "gap1", "gap2", "gap3"};
-    process_cpu_se_stage2(inimage, in4, outimage, cache);
+    process_cpu_se_stage2(inimage, in4, outimage, cache, tileSize);
 
     cache.clear();
 
     return 0;
 }
 
-int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std::string>& names, const std::vector<std::string>& outnames, const ncnn::Option& opt, FeatureCache& cache) const
+int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std::string>& names, const std::vector<std::string>& outnames, const ncnn::Option& opt, FeatureCache& cache, int tileSize) const
 {
     const unsigned char* pixeldata = (const unsigned char*)inimage.data;
     const int w = inimage.w;
     const int h = inimage.h;
     const int channels = inimage.elempack;
 
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int effective_tilesize = (tileSize > 0) ? tileSize : tilesize;
+    const int TILE_SIZE_X = effective_tilesize;
+    const int TILE_SIZE_Y = effective_tilesize;
 
     // each tile 400x400
     const int xtiles = (w + TILE_SIZE_X - 1) / TILE_SIZE_X;
@@ -1417,7 +1477,7 @@ int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std
         ncnn::Mat in;
         if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
         {
-            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + in_tile_y0 * w * channels, (size_t)channels, 1);
+            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + (size_t)in_tile_y0 * w * channels, (size_t)channels, 1);
         }
         else
         {
@@ -1426,7 +1486,7 @@ int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std
 // #if _WIN32
                 // in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGR2RGB, w, (in_tile_y1 - in_tile_y0));
 // #else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
 // #endif
             }
             if (channels == 4)
@@ -1434,7 +1494,7 @@ int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std
 // #if _WIN32
                 // in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGRA2RGBA, w, (in_tile_y1 - in_tile_y0));
 // #else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
 // #endif
             }
         }
@@ -1503,7 +1563,7 @@ int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(10);
@@ -1568,6 +1628,9 @@ int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std
 
                         cache.save(yi, xi, ti, outnames[i], feat);
                     }
+
+                    cmd.submit_and_wait();
+                    cmd.reset();
                 }
             }
             else
@@ -1586,7 +1649,7 @@ int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(3);
@@ -1659,15 +1722,16 @@ int RealCUGAN::process_se_stage0(const ncnn::Mat& inimage, const std::vector<std
     return 0;
 }
 
-int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std::string>& names, ncnn::Mat& outimage, const ncnn::Option& opt, FeatureCache& cache) const
+int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std::string>& names, ncnn::Mat& outimage, const ncnn::Option& opt, FeatureCache& cache, int tileSize) const
 {
     const unsigned char* pixeldata = (const unsigned char*)inimage.data;
     const int w = inimage.w;
     const int h = inimage.h;
     const int channels = inimage.elempack;
 
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int effective_tilesize = (tileSize > 0) ? tileSize : tilesize;
+    const int TILE_SIZE_X = effective_tilesize;
+    const int TILE_SIZE_Y = effective_tilesize;
 
     // each tile 400x400
     const int xtiles = (w + TILE_SIZE_X - 1) / TILE_SIZE_X;
@@ -1696,7 +1760,7 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
         ncnn::Mat in;
         if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
         {
-            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + in_tile_y0 * w * channels, (size_t)channels, 1);
+            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + (size_t)in_tile_y0 * w * channels, (size_t)channels, 1);
         }
         else
         {
@@ -1705,7 +1769,7 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
 // #if _WIN32
                 // in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGR2RGB, w, (in_tile_y1 - in_tile_y0));
 // #else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
 // #endif
             }
             if (channels == 4)
@@ -1713,7 +1777,7 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
 // #if _WIN32
                 // in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGRA2RGBA, w, (in_tile_y1 - in_tile_y0));
 // #else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
 // #endif
             }
         }
@@ -1782,7 +1846,7 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(10);
@@ -1841,6 +1905,9 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
                     }
 
                     ex.extract("out0", out_tile_gpu[ti], cmd);
+
+                    cmd.submit_and_wait();
+                    cmd.reset();
                 }
 
                 ncnn::VkMat out_alpha_tile_gpu;
@@ -1956,7 +2023,7 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(3);
@@ -2015,6 +2082,11 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
                     if (scale == 1)
                     {
                         out_alpha_tile_gpu = in_alpha_tile_gpu;
+                    }
+                    else
+                    {
+                        cmd.submit_and_wait();
+                        cmd.reset();
                     }
                     if (scale == 2)
                     {
@@ -2106,7 +2178,7 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
 
             if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
             {
-                out = ncnn::Mat(out_gpu.w, out_gpu.h, (unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, (size_t)channels, 1);
+                out = ncnn::Mat(out_gpu.w, out_gpu.h, (unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, (size_t)channels, 1);
             }
 
             cmd.record_clone(out_gpu, out, opt);
@@ -2120,7 +2192,7 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
 // #if _WIN32
                     // out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB2BGR);
 // #else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGB);
 // #endif
                 }
                 if (channels == 4)
@@ -2128,7 +2200,7 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
 // #if _WIN32
                     // out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA2BGRA);
 // #else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels, ncnn::Mat::PIXEL_RGBA);
 // #endif
                 }
             }
@@ -2138,15 +2210,16 @@ int RealCUGAN::process_se_stage2(const ncnn::Mat& inimage, const std::vector<std
     return 0;
 }
 
-int RealCUGAN::process_se_sync_gap(const ncnn::Mat& inimage, const std::vector<std::string>& names, const ncnn::Option& opt, FeatureCache& cache) const
+int RealCUGAN::process_se_sync_gap(const ncnn::Mat& inimage, const std::vector<std::string>& names, const ncnn::Option& opt, FeatureCache& cache, int tileSize) const
 {
     const unsigned char* pixeldata = (const unsigned char*)inimage.data;
     const int w = inimage.w;
     const int h = inimage.h;
     const int channels = inimage.elempack;
 
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int effective_tilesize = (tileSize > 0) ? tileSize : tilesize;
+    const int TILE_SIZE_X = effective_tilesize;
+    const int TILE_SIZE_Y = effective_tilesize;
 
     // each tile 400x400
     const int xtiles = (w + TILE_SIZE_X - 1) / TILE_SIZE_X;
@@ -2317,7 +2390,7 @@ int RealCUGAN::process_se_very_rough_stage0(const ncnn::Mat& inimage, const std:
         ncnn::Mat in;
         if ((opt.use_fp16_storage || opt.use_fp16_packed) && opt.use_int8_storage)
         {
-            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + in_tile_y0 * w * channels, (size_t)channels, 1);
+            in = ncnn::Mat(w, (in_tile_y1 - in_tile_y0), (unsigned char*)pixeldata + (size_t)in_tile_y0 * w * channels, (size_t)channels, 1);
         }
         else
         {
@@ -2326,7 +2399,7 @@ int RealCUGAN::process_se_very_rough_stage0(const ncnn::Mat& inimage, const std:
 // #if _WIN32
                 // in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGR2RGB, w, (in_tile_y1 - in_tile_y0));
 // #else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGB, w, (in_tile_y1 - in_tile_y0));
 // #endif
             }
             if (channels == 4)
@@ -2334,7 +2407,7 @@ int RealCUGAN::process_se_very_rough_stage0(const ncnn::Mat& inimage, const std:
 // #if _WIN32
                 // in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_BGRA2RGBA, w, (in_tile_y1 - in_tile_y0));
 // #else
-                in = ncnn::Mat::from_pixels(pixeldata + in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
+                in = ncnn::Mat::from_pixels(pixeldata + (size_t)in_tile_y0 * w * channels, ncnn::Mat::PIXEL_RGBA, w, (in_tile_y1 - in_tile_y0));
 // #endif
             }
         }
@@ -2403,7 +2476,7 @@ int RealCUGAN::process_se_very_rough_stage0(const ncnn::Mat& inimage, const std:
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(10);
@@ -2468,6 +2541,9 @@ int RealCUGAN::process_se_very_rough_stage0(const ncnn::Mat& inimage, const std:
 
                         cache.save(yi, xi, ti, outnames[i], feat);
                     }
+
+                    cmd.submit_and_wait();
+                    cmd.reset();
                 }
             }
             else
@@ -2486,7 +2562,7 @@ int RealCUGAN::process_se_very_rough_stage0(const ncnn::Mat& inimage, const std:
 
                     if (channels == 4)
                     {
-                        in_alpha_tile_gpu.create(tile_w_nopad, tile_h_nopad, 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
+                        in_alpha_tile_gpu.create(std::max(tile_w_nopad, 4), std::max(tile_h_nopad, 4), 1, in_out_tile_elemsize, 1, opt.blob_vkallocator);
                     }
 
                     std::vector<ncnn::VkMat> bindings(3);
@@ -2717,15 +2793,16 @@ int RealCUGAN::process_se_very_rough_sync_gap(const ncnn::Mat& inimage, const st
     return 0;
 }
 
-int RealCUGAN::process_cpu_se_stage0(const ncnn::Mat& inimage, const std::vector<std::string>& names, const std::vector<std::string>& outnames, FeatureCache& cache) const
+int RealCUGAN::process_cpu_se_stage0(const ncnn::Mat& inimage, const std::vector<std::string>& names, const std::vector<std::string>& outnames, FeatureCache& cache, int tileSize) const
 {
     const unsigned char* pixeldata = (const unsigned char*)inimage.data;
     const int w = inimage.w;
     const int h = inimage.h;
     const int channels = inimage.elempack;
 
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int effective_tilesize = (tileSize > 0) ? tileSize : tilesize;
+    const int TILE_SIZE_X = effective_tilesize;
+    const int TILE_SIZE_Y = effective_tilesize;
 
     ncnn::Option opt = net.opt;
 
@@ -2968,15 +3045,16 @@ int RealCUGAN::process_cpu_se_stage0(const ncnn::Mat& inimage, const std::vector
     return 0;
 }
 
-int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector<std::string>& names, ncnn::Mat& outimage, FeatureCache& cache) const
+int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector<std::string>& names, ncnn::Mat& outimage, FeatureCache& cache, int tileSize) const
 {
     const unsigned char* pixeldata = (const unsigned char*)inimage.data;
     const int w = inimage.w;
     const int h = inimage.h;
     const int channels = inimage.elempack;
 
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int effective_tilesize = (tileSize > 0) ? tileSize : tilesize;
+    const int TILE_SIZE_X = effective_tilesize;
+    const int TILE_SIZE_Y = effective_tilesize;
 
     ncnn::Option opt = net.opt;
 
@@ -3156,17 +3234,29 @@ int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector
                     {
                         out_alpha_tile = in_alpha_tile;
                     }
-                    if (scale == 2)
+                    else
                     {
-                        bicubic_2x->forward(in_alpha_tile, out_alpha_tile, opt);
-                    }
-                    if (scale == 3)
-                    {
-                        bicubic_3x->forward(in_alpha_tile, out_alpha_tile, opt);
-                    }
-                    if (scale == 4)
-                    {
-                        bicubic_4x->forward(in_alpha_tile, out_alpha_tile, opt);
+                        ncnn::Mat alpha_in = in_alpha_tile;
+                        int alpha_pad_right = std::max(4 - alpha_in.w, 0);
+                        int alpha_pad_bottom = std::max(4 - alpha_in.h, 0);
+                        if (alpha_pad_right > 0 || alpha_pad_bottom > 0)
+                        {
+                            ncnn::Mat alpha_padded;
+                            ncnn::copy_make_border(alpha_in, alpha_padded, 0, alpha_pad_bottom, 0, alpha_pad_right, ncnn::BORDER_REPLICATE, 0.f, opt);
+                            alpha_in = alpha_padded;
+                        }
+                        if (scale == 2)
+                        {
+                            bicubic_2x->forward(alpha_in, out_alpha_tile, opt);
+                        }
+                        if (scale == 3)
+                        {
+                            bicubic_3x->forward(alpha_in, out_alpha_tile, opt);
+                        }
+                        if (scale == 4)
+                        {
+                            bicubic_4x->forward(alpha_in, out_alpha_tile, opt);
+                        }
                     }
                 }
 
@@ -3247,7 +3337,19 @@ int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector
 
                     if (channels == 4)
                     {
-                        memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
+                        if (out_alpha_tile.w == out.w && out_alpha_tile.h == out.h)
+                        {
+                            memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
+                        }
+                        else
+                        {
+                            ncnn::Mat dst_alpha = out.channel(3);
+                            const ncnn::Mat src_alpha = out_alpha_tile.channel(0);
+                            for (int i = 0; i < out.h; i++)
+                            {
+                                memcpy(dst_alpha.row(i), src_alpha.row(i), out.w * sizeof(float));
+                            }
+                        }
                     }
                 }
             }
@@ -3312,17 +3414,29 @@ int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector
                     {
                         out_alpha_tile = in_alpha_tile;
                     }
-                    if (scale == 2)
+                    else
                     {
-                        bicubic_2x->forward(in_alpha_tile, out_alpha_tile, opt);
-                    }
-                    if (scale == 3)
-                    {
-                        bicubic_3x->forward(in_alpha_tile, out_alpha_tile, opt);
-                    }
-                    if (scale == 4)
-                    {
-                        bicubic_4x->forward(in_alpha_tile, out_alpha_tile, opt);
+                        ncnn::Mat alpha_in = in_alpha_tile;
+                        int alpha_pad_right = std::max(4 - alpha_in.w, 0);
+                        int alpha_pad_bottom = std::max(4 - alpha_in.h, 0);
+                        if (alpha_pad_right > 0 || alpha_pad_bottom > 0)
+                        {
+                            ncnn::Mat alpha_padded;
+                            ncnn::copy_make_border(alpha_in, alpha_padded, 0, alpha_pad_bottom, 0, alpha_pad_right, ncnn::BORDER_REPLICATE, 0.f, opt);
+                            alpha_in = alpha_padded;
+                        }
+                        if (scale == 2)
+                        {
+                            bicubic_2x->forward(alpha_in, out_alpha_tile, opt);
+                        }
+                        if (scale == 3)
+                        {
+                            bicubic_3x->forward(alpha_in, out_alpha_tile, opt);
+                        }
+                        if (scale == 4)
+                        {
+                            bicubic_4x->forward(alpha_in, out_alpha_tile, opt);
+                        }
                     }
                 }
 
@@ -3367,7 +3481,19 @@ int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector
 
                     if (channels == 4)
                     {
-                        memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
+                        if (out_alpha_tile.w == out.w && out_alpha_tile.h == out.h)
+                        {
+                            memcpy(out.channel_range(3, 1), out_alpha_tile, out_alpha_tile.total() * sizeof(float));
+                        }
+                        else
+                        {
+                            ncnn::Mat dst_alpha = out.channel(3);
+                            const ncnn::Mat src_alpha = out_alpha_tile.channel(0);
+                            for (int i = 0; i < out.h; i++)
+                            {
+                                memcpy(dst_alpha.row(i), src_alpha.row(i), out.w * sizeof(float));
+                            }
+                        }
                     }
                 }
             }
@@ -3378,7 +3504,7 @@ int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector
 // #if _WIN32
                     // out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB2BGR, w * scale * channels);
 // #else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB, w * scale * channels);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels + (size_t)xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGB, w * scale * channels);
 // #endif
                 }
                 if (channels == 4)
@@ -3386,7 +3512,7 @@ int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector
 // #if _WIN32
                     // out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA2BGRA, w * scale * channels);
 // #else
-                    out.to_pixels((unsigned char*)outimage.data + yi * scale * TILE_SIZE_Y * w * scale * channels + xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA, w * scale * channels);
+                    out.to_pixels((unsigned char*)outimage.data + (size_t)yi * scale * TILE_SIZE_Y * w * scale * channels + (size_t)xi * scale * TILE_SIZE_X * channels, ncnn::Mat::PIXEL_RGBA, w * scale * channels);
 // #endif
                 }
             }
@@ -3396,15 +3522,16 @@ int RealCUGAN::process_cpu_se_stage2(const ncnn::Mat& inimage, const std::vector
     return 0;
 }
 
-int RealCUGAN::process_cpu_se_sync_gap(const ncnn::Mat& inimage, const std::vector<std::string>& names, FeatureCache& cache) const
+int RealCUGAN::process_cpu_se_sync_gap(const ncnn::Mat& inimage, const std::vector<std::string>& names, FeatureCache& cache, int tileSize) const
 {
     const unsigned char* pixeldata = (const unsigned char*)inimage.data;
     const int w = inimage.w;
     const int h = inimage.h;
     const int channels = inimage.elempack;
 
-    const int TILE_SIZE_X = tilesize;
-    const int TILE_SIZE_Y = tilesize;
+    const int effective_tilesize = (tileSize > 0) ? tileSize : tilesize;
+    const int TILE_SIZE_X = effective_tilesize;
+    const int TILE_SIZE_Y = effective_tilesize;
 
     ncnn::Option opt = net.opt;
 
